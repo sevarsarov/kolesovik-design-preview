@@ -1,2 +1,8 @@
-# kolesovik-design-preview
-Public static previews of Kolesovik design prototypes. No production code or data
+# Kolesovik Design Preview
+Static public preview of Kolesovik UI design prototypes.
+- No production code
+- No production API
+- No customer data
+- Mock data only
+- Not a source of truth
+Canonical project and design sources remain in the private Kolesovik_Web repository.
