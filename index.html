@@ -5,27 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <meta name="description" content="Изолированный дизайн-прототип КОЛЕСОВИК. Только фиктивные данные.">
-  <title>КОЛЕСОВИК — Pilot UI Design v1</title>
+  <title>КОЛЕСОВИК — Pilot UI Design v1.2</title>
   <link rel="stylesheet" href="styles.css">
-  <script>try{document.documentElement.dataset.theme=localStorage.getItem('pilot-theme')||'light'}catch{}</script>
+  <script>try{const t=localStorage.getItem('pilot-theme')||'light';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t}catch{}</script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#app">К содержимому</a>
-  <div class="prototype-banner"><span class="banner-dot"></span> DESIGN PROTOTYPE — NOT PRODUCTION <span class="banner-sep">·</span> Фиктивные данные</div>
-  <aside class="controls collapsed" aria-label="Prototype controls">
-    <div class="controls-top"><span class="control-kicker">PROTOTYPE CONTROLS</span><span class="not-product">NOT PRODUCT UI</span><button id="controls-toggle" class="icon-button controls-toggle" aria-label="Развернуть панель прототипа" aria-expanded="false">+</button></div>
-    <div class="controls-body">
-      <label class="control-label" for="screen-select">Экран</label>
+  <div class="prototype-tools"><span class="prototype-label">PILOT v1.2 · Фиктивные данные</span><button type="button" id="controls-toggle" class="prototype-launcher" aria-label="Prototype Controls" aria-expanded="false" aria-controls="prototype-controls"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--surface-1)"/><circle cx="16" cy="12" r="2" fill="var(--surface-1)"/><circle cx="9" cy="18" r="2" fill="var(--surface-1)"/></svg></button></div>
+  <div id="prototype-controls" class="prototype-controls" hidden>
+    <section class="prototype-panel" role="dialog" aria-modal="true" aria-labelledby="controls-title" tabindex="-1">
+      <header><h2 id="controls-title">Prototype Controls</h2><button type="button" id="controls-close" class="icon-button" aria-label="Закрыть controls">×</button></header>
+      <p>Служебная панель прототипа. Данные локальны, действия не отправляются.</p>
+      <div class="prototype-controls-body">
+      <label for="screen-select">Экран</label>
       <select id="screen-select">
         <option value="next">01 · Next / Главная</option><option value="customer">02 · Customer / Главная</option><option value="booking">03 · Customer / Запись</option><option value="order">04 · Admin / Заказ</option><option value="shift">05 · Admin / Смена</option><option value="dialog">06 · Admin / Диалог</option>
       </select>
-      <label class="control-label" for="theme-select">Тема</label>
+      <label for="theme-select">Тема</label>
       <select id="theme-select"><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="system">Системная</option></select>
-      <label class="control-label" for="state-select">Состояние</label>
+      <label for="state-select">Состояние</label>
       <select id="state-select"><option value="normal">Обычное</option><option value="loading">Загрузка</option><option value="empty">Пустой список</option><option value="error">Ошибка</option><option value="success">Успешно</option><option value="warning">Предупреждение</option><option value="unknown">Неизвестный исход</option><option value="readonly">Только чтение</option><option value="partial">Частичный успех</option></select>
-    </div>
-  </aside>
+      </div>
+      <button type="button" class="prototype-hide" id="controls-hide">Скрыть controls · вернуть Alt+Shift+P</button>
+    </section>
+  </div>
   <main id="app" tabindex="-1"></main>
   <div id="overlay-root"></div>
 </body>
