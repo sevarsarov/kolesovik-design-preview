@@ -406,7 +406,7 @@ function heroLoad(index){
 function heroSchedule(){
  clearTimeout(heroState.timer);
  if(!heroState.root?.isConnected||heroMotion.matches||document.hidden||heroState.hovered||heroState.focused)return;
- const delay=Math.max(7600,heroState.pausedUntil-Date.now()+7600);
+ const delay=Math.max(7600,heroState.pausedUntil-Date.now());
  heroState.timer=setTimeout(()=>heroGo(1,false),delay);
 }
 async function heroGo(direction,manual=true,absolute=false){
@@ -425,9 +425,9 @@ async function heroGo(direction,manual=true,absolute=false){
 function setupHeroSlider(){
  clearTimeout(heroState.timer);const root=$('#next-hero-slider');if(!root)return;
  Object.assign(heroState,{root,index:0,target:0,token:0,pausedUntil:0,hovered:false,focused:false,mobile:matchMedia('(max-width:767px)').matches});
- root.addEventListener('mouseenter',()=>{heroState.hovered=true;clearTimeout(heroState.timer)});
- root.addEventListener('mouseleave',()=>{heroState.hovered=false;heroSchedule()});
- root.addEventListener('focusin',()=>{heroState.focused=true;clearTimeout(heroState.timer)});
+ root.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'){heroState.hovered=true;clearTimeout(heroState.timer)}});
+ root.addEventListener('pointerleave',event=>{if(event.pointerType==='mouse'){heroState.hovered=false;heroSchedule()}});
+ root.addEventListener('focusin',event=>{heroState.focused=event.target.matches(':focus-visible')||document.documentElement.dataset.inputModality==='keyboard';if(heroState.focused)clearTimeout(heroState.timer)});
  root.addEventListener('focusout',event=>{if(!root.contains(event.relatedTarget)){heroState.focused=false;heroSchedule()}});
  root.addEventListener('keydown',event=>{const direction={ArrowLeft:-1,ArrowRight:1,Home:-heroState.target,End:heroSlides.length-1-heroState.target}[event.key];if(direction===undefined)return;event.preventDefault();heroGo(direction)});
  let start=null;

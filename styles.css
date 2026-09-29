@@ -417,10 +417,10 @@
   .next-hero-slide img{display:block;width:100%;height:100%;object-fit:cover;object-position:var(--hero-crop-mobile)}
   .next-photo-scene::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,rgba(8,13,17,.18),transparent 56%,rgba(8,13,17,.08)),linear-gradient(0deg,rgba(8,13,17,.27),transparent 42%),linear-gradient(135deg,rgba(155,25,32,.09),transparent 48%)}
   html[data-theme="dark"] .next-photo-scene::after{background:linear-gradient(90deg,rgba(5,8,11,.25),transparent 58%,rgba(5,8,11,.13)),linear-gradient(0deg,rgba(5,8,11,.32),transparent 45%),linear-gradient(135deg,rgba(155,25,32,.07),transparent 48%)}
-  .next-photo-pagination{position:absolute;z-index:2;right:12px;bottom:77px;left:12px;display:flex;justify-content:center;align-items:center}
-  .next-photo-pagination button{display:grid;place-items:center;flex:1 1 0;max-width:36px;min-width:0;height:44px;padding:0;border:0;background:transparent;color:#fff}
+  .next-photo-pagination{position:absolute;z-index:2;bottom:72px;left:50%;display:flex;align-items:center;gap:3px;transform:translateX(-50%)}
+  .next-photo-pagination button{display:grid;place-items:center;flex:none;width:21px;height:32px;padding:0;border:0;background:transparent;color:#fff}
   .next-photo-pagination button span{width:7px;height:7px;border:1px solid rgba(255,255,255,.95);border-radius:99px;background:rgba(255,255,255,.76);box-shadow:0 0 0 1px rgba(8,13,17,.6),0 1px 5px rgba(0,0,0,.9);transition:width .18s ease,background .18s ease}
-  .next-photo-pagination button[aria-pressed="true"] span{width:17px;border-color:#fff;background:#fff}
+  .next-photo-pagination button[aria-pressed="true"] span{width:12px;border-color:#fff;background:#fff}
   .next-photo-pagination button:focus-visible{outline:2px solid #fff;outline-offset:-4px;border-radius:9px}
   @media(min-width:768px){.next-hero-slide img{object-position:var(--hero-crop-desktop)}}
   .next-photo-caption{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:center;gap:12px;padding:18px 24px;background:var(--surface-1);color:var(--text-1)}
