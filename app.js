@@ -74,16 +74,22 @@ function openWorkDetails(id){
  openModal('Выполненные работы',body,'<button type="button" class="button secondary" data-action="work-ask">Спросить</button><button type="button" class="button primary" data-action="work-booking">Записаться</button>');
 }
 const heroSlides=[
- {file:'service_10',alt:'Фасад КОЛЕСОВИК и автомобили на сервисных подъёмниках',desktop:'50% 36%',mobile:'50% 32%'},
+ {file:'service_1',alt:'Автомобиль в сервисной зоне КОЛЕСОВИК',desktop:'50% 50%',mobile:'50% 54%'},
  {file:'service_2',alt:'Автомобиль на подъёмнике внутри ремонтной зоны',desktop:'50% 44%',mobile:'50% 46%'},
- {file:'service_7',alt:'Автомобиль с открытым капотом в сервисе',desktop:'56% 50%',mobile:'58% 50%'},
  {file:'service_3',alt:'Дневной вид сервиса КОЛЕСОВИК и автомобиля',desktop:'50% 66%',mobile:'49% 58%'},
- {file:'service_5',alt:'Вечерний вид КОЛЕСОВИК с открытыми сервисными постами',desktop:'52% 65%',mobile:'52% 60%'}
+ {file:'service_4',alt:'Шинный центр и сервисная зона вечером',desktop:'50% 52%',mobile:'50% 55%'},
+ {file:'service_5',alt:'Вечерний вид КОЛЕСОВИК с открытыми сервисными постами',desktop:'52% 65%',mobile:'52% 60%'},
+ {file:'service_6',alt:'Колесо автомобиля на фоне сервиса КОЛЕСОВИК',desktop:'54% 50%',mobile:'55% 53%'},
+ {file:'service_7',alt:'Автомобиль с открытым капотом в сервисе',desktop:'56% 50%',mobile:'58% 50%'},
+ {file:'service_8',alt:'Оборудование внутри сервисной зоны',desktop:'50% 53%',mobile:'50% 55%'},
+ {file:'service_9',alt:'Дневной вид территории и здания КОЛЕСОВИК',desktop:'50% 54%',mobile:'50% 53%'},
+ {file:'service_10',alt:'Фасад КОЛЕСОВИК и автомобили на сервисных подъёмниках',desktop:'50% 36%',mobile:'50% 32%'}
 ];
 const heroSource=slide=>'assets/service-gallery/'+slide.file+(matchMedia('(max-width:767px)').matches?'-mobile':'')+'.webp';
 function heroSliderMarkup(){
  const slides=heroSlides.map((slide,index)=>`<div class="next-hero-slide${index===0?' is-active':''}" role="group" aria-roledescription="слайд" aria-label="${index+1} из ${heroSlides.length}: ${slide.alt}" aria-hidden="${index!==0}" style="--hero-crop-desktop:${slide.desktop};--hero-crop-mobile:${slide.mobile}"><img data-hero-image="${index}" ${index===0?`src="${heroSource(slide)}" fetchpriority="high"`:'data-pending="true"'} width="1448" height="1086" alt="${slide.alt}" decoding="async"></div>`).join('');
- return `<div class="next-photo-scene" id="next-hero-slider" role="region" aria-roledescription="карусель" aria-label="Фотографии сервиса КОЛЕСОВИК" tabindex="0">${slides}<div class="next-photo-controls"><button type="button" data-action="hero-prev" aria-label="Предыдущее фото">${icons.arrow}</button><output id="next-hero-position" aria-live="off">1 / ${heroSlides.length}</output><button type="button" data-action="hero-next" aria-label="Следующее фото">${icons.arrow}</button></div></div>`;
+ const dots=heroSlides.map((slide,index)=>`<button type="button" data-action="hero-dot" data-index="${index}" aria-label="Фото ${index+1}: ${slide.alt}" aria-pressed="${index===0}"><span aria-hidden="true"></span></button>`).join('');
+ return `<div class="next-photo-scene" id="next-hero-slider" role="region" aria-roledescription="карусель" aria-label="Фотографии сервиса КОЛЕСОВИК" tabindex="0">${slides}<div class="next-photo-pagination" role="group" aria-label="Выбрать фотографию">${dots}</div></div>`;
 }
 function publicPage(){
  return '<div class="next-home"><header class="next-header next-container">'+topBrand()+'<nav class="next-nav" aria-label="Главная навигация"><a href="#directions">Направления</a><a href="#tires">Шины</a><a href="#works">Работы</a><a href="#contacts">Контакты</a></nav><div class="next-header-actions"><button type="button" class="next-account" data-action="next-login">'+userIcon+' '+(nextSession.authenticated?'Кабинет':'Войти')+'</button><button type="button" class="next-menu" aria-expanded="false" data-action="menu" aria-label="Открыть меню"><span></span><span></span></button></div></header>'+
@@ -355,7 +361,7 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Tab'){const f=[...d.querySelectorAll('button,input,select,textarea,summary,[href],[tabindex]:not([tabindex="-1"])')].filter(x=>!x.disabled&&x.getClientRects().length);if(!f.length){e.preventDefault();d.focus();return}const first=f[0],last=f[f.length-1];if(e.shiftKey&&(document.activeElement===first||!f.includes(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&(document.activeElement===last||!f.includes(document.activeElement))){e.preventDefault();first.focus()}}
 });
 const action=(name,el)=>{if(name.startsWith('ws-')||name.startsWith('auth-')){workspaceAction(name,el)}
-else if(name==='hero-prev'||name==='hero-next'){heroGo(name==='hero-next'?1:-1)}
+else if(name==='hero-dot'){heroGo(Number(el.dataset.index),true,true)}
 else if(name==='next-booking'){openServiceWorkspace('booking')}
 else if(name==='next-login'){if(nextSession.authenticated){customerTab='Главная';setScreen('customer')}else openNextAuth()}
 else if(name==='rail-step'){stepRail(document.getElementById(el.dataset.rail),Number(el.dataset.direction))}
@@ -403,15 +409,16 @@ function heroSchedule(){
  const delay=Math.max(7600,heroState.pausedUntil-Date.now()+7600);
  heroState.timer=setTimeout(()=>heroGo(1,false),delay);
 }
-async function heroGo(direction,manual=true){
+async function heroGo(direction,manual=true,absolute=false){
  const root=heroState.root;if(!root?.isConnected)return;
  if(manual){heroState.pausedUntil=Date.now()+11000;clearTimeout(heroState.timer)}
- const next=((heroState.target+direction)%heroSlides.length+heroSlides.length)%heroSlides.length;
+ const next=absolute?direction:((heroState.target+direction)%heroSlides.length+heroSlides.length)%heroSlides.length;
  heroState.target=next;const token=++heroState.token;
  try{await heroLoad(next)}catch{if(token===heroState.token){heroState.target=heroState.index;heroSchedule()}return}
  if(token!==heroState.token||!root.isConnected)return;
  root.querySelectorAll('.next-hero-slide').forEach((slide,index)=>{slide.classList.toggle('is-active',index===next);slide.setAttribute('aria-hidden',String(index!==next))});
- heroState.index=next;root.querySelector('#next-hero-position').textContent=(next+1)+' / '+heroSlides.length;
+ root.querySelectorAll('.next-photo-pagination button').forEach((dot,index)=>dot.setAttribute('aria-pressed',String(index===next)));
+ heroState.index=next;
  setTimeout(()=>{if(root.isConnected)heroLoad((next+1)%heroSlides.length).catch(()=>{})},1500);
  heroSchedule();
 }
