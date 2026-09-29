@@ -1,4 +1,6 @@
 const $ = (s, root=document) => root.querySelector(s);
+document.addEventListener('pointerdown',()=>{document.documentElement.dataset.inputModality='pointer'},{passive:true});
+document.addEventListener('keydown',event=>{if(event.key==='Tab')document.documentElement.dataset.inputModality='keyboard'});
 const icons = { arrow:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>', car:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 11 2-5h12l2 5M3 11h18v8H3zM6 19v2m12-2v2M6 15h.01M18 15h.01"/></svg>', calendar:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>', wrench:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 6a5 5 0 0 0-6 6l-5 5a2.1 2.1 0 0 0 3 3l5-5a5 5 0 0 0 6-6l-3 3-3-3 3-3Z"/></svg>', chat:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-2 2v-6.5A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h8m-8 3h5"/></svg>', home:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3zM9 20v-6h6v6"/></svg>', history:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8m0-5v5h5m4-1v5l4 2"/></svg>', settings:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.5 2.6-1.7-.7a8 8 0 0 1-1.7 1L15.7 21h-3.1l-.3-1.9a8 8 0 0 1-1.7-1l-1.7.7-1.5-2.6 1.4-1.1a8 8 0 0 1 0-2l-1.4-1.2 1.5-2.6 1.7.7a8 8 0 0 1 1.7-1L12.6 7h3.1l.3 1.9a8 8 0 0 1 1.7 1l1.7-.7 1.5 2.6-1.4 1.1a8 8 0 0 1-.1 2Z" transform="translate(-1 -2)"/></svg>' };
 const stateNames={normal:'Обычное состояние',loading:'Загружаем данные',empty:'Нет записей',error:'Не удалось обновить данные',success:'Данные обновлены',warning:'Требуется внимание',unknown:'Исход операции неизвестен',readonly:'Заказ закрыт · только чтение',partial:'Смена открыта · состав не сохранён'};
 let screen='next', demo='normal', overlayReturn=null, activeDialog=false, bookingMode='confirmed', bookingCancelled=false, customerTab='Главная', orderTab='Обзор';
@@ -22,12 +24,13 @@ const nextWorks=[
 const nextFavorites=new Set();
 const nextCart=Object.create(null);
 const nextQuantities=Object.create(null);
+const selectedProductQuantity=p=>nextQuantities[p.id]??Math.min(4,p.stock);
 const tireGraphic='<svg viewBox="0 0 200 160" aria-hidden="true"><ellipse cx="100" cy="82" rx="61" ry="70" fill="none" stroke="currentColor" stroke-width="24"/><ellipse cx="100" cy="82" rx="60" ry="69" fill="none" stroke="var(--surface-1)" stroke-width="2" stroke-dasharray="5 5"/><ellipse cx="100" cy="82" rx="42" ry="51" fill="var(--surface-2)" stroke="var(--border-2)" stroke-width="2"/><ellipse cx="100" cy="82" rx="24" ry="30" fill="var(--surface-1)" stroke="var(--border-2)" stroke-width="2"/><circle cx="100" cy="82" r="7" fill="var(--text-3)"/><path d="M72 21l7 10m42-10-7 10M59 42l11 5m60-5-11 5M40 70l15 2m90-2-15 2M42 101l14-3m88 3-14-3M59 124l11-6m60 6-11-6M78 143l5-12m39 12-5-12" fill="none" stroke="var(--surface-1)" stroke-width="4" stroke-linecap="round"/></svg>';
 const heartGraphic='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 5.9a5 5 0 0 0-7.1 0L12 7.2l-1.3-1.3a5 5 0 0 0-7.1 7.1l1.3 1.3L12 21l7.1-6.7 1.3-1.3a5 5 0 0 0 0-7.1Z"/></svg>';
 function productCard(p){
- const fav=nextFavorites.has(p.id),qty=nextQuantities[p.id]||1;
+ const fav=nextFavorites.has(p.id),qty=selectedProductQuantity(p);
  const quantity=p.stock>0?'<div class="next-quantity" role="group" aria-label="Количество '+p.brand+' '+p.model+'"><button type="button" data-action="qty-down" data-product-id="'+p.id+'" aria-label="Уменьшить количество" '+(qty===1?'disabled':'')+'>−</button><output data-quantity="'+p.id+'" aria-live="polite">'+qty+'</output><button type="button" data-action="qty-up" data-product-id="'+p.id+'" aria-label="Увеличить количество" '+(qty===p.stock?'disabled':'')+'>+</button></div>':'<span class="next-product-quantity-note">Наличие уточнит сервис</span>';
- return '<article class="next-product-card" data-kind="'+p.kind+'" aria-label="'+p.brand+' '+p.model+'"><div class="next-product-media">'+tireGraphic+'<span>'+p.season+'</span><button type="button" class="next-favorite'+(fav?' is-favorite':'')+'" data-action="product-favorite" data-product-id="'+p.id+'" aria-pressed="'+fav+'" aria-label="'+(fav?'Убрать из избранного: ':'В избранное: ')+p.brand+' '+p.model+'">'+heartGraphic+'</button></div><div class="next-product-identity"><span class="next-product-brand">'+p.brand+'</span><h3>'+p.model+'</h3><p class="next-product-size">'+p.size+'</p><div class="next-product-tags">'+p.tags.map(t=>'<span>'+t+'</span>').join('')+'</div></div><div class="next-product-price"><strong>'+(p.price===null?'Цена по запросу':fmt(p.price))+'</strong>'+(p.price===null?'':'<small>за 1 шт.</small>')+'</div><div class="next-product-availability"><span class="next-product-status next-product-status--'+p.kind+'">'+p.status+'</span><span class="next-product-delivery">'+p.delivery+'</span></div><div class="next-product-action-row">'+quantity+'<button type="button" class="next-product-details" data-action="product-details" data-product-id="'+p.id+'">Подробнее</button></div><button type="button" class="next-product-buy" data-action="'+(p.stock>0?'product-add':'product-question')+'" data-product-id="'+p.id+'">'+(p.stock===0?'Уточнить цену':p.kind==='delivery'?'Запросить поставку':'В корзину')+'</button></article>';
+ return '<article class="next-product-card" data-kind="'+p.kind+'" aria-label="'+p.brand+' '+p.model+'"><div class="next-product-media">'+tireGraphic+'<span>'+p.season+'</span><button type="button" class="next-favorite'+(fav?' is-favorite':'')+'" data-action="product-favorite" data-product-id="'+p.id+'" aria-pressed="'+fav+'" aria-label="'+(fav?'Убрать из избранного: ':'В избранное: ')+p.brand+' '+p.model+'">'+heartGraphic+'</button></div><div class="next-product-identity"><span class="next-product-brand">'+p.brand+'</span><h3>'+p.model+'</h3><p class="next-product-size">'+p.size+'</p><div class="next-product-tags">'+p.tags.map(t=>'<span>'+t+'</span>').join('')+'</div></div><div class="next-product-price"><strong>'+(p.price===null?'Цена по запросу':fmt(p.price))+'</strong>'+(p.price===null?'':'<small>за 1 шт.</small><span class="next-product-total" data-product-total="'+p.id+'">'+qty+' шт. · '+fmt(p.price*qty)+'</span>')+'</div><div class="next-product-availability"><span class="next-product-status next-product-status--'+p.kind+'">'+p.status+'</span><span class="next-product-delivery">'+p.delivery+'</span></div><div class="next-product-action-row">'+quantity+'<button type="button" class="next-product-details" data-action="product-details" data-product-id="'+p.id+'">Подробнее</button></div><button type="button" class="next-product-buy" data-action="'+(p.stock>0?'product-add':'product-question')+'" data-product-id="'+p.id+'">'+(p.stock===0?'Уточнить цену':p.kind==='delivery'?'Запросить поставку':'В корзину')+'</button></article>';
 }
 function workCard(item){
  return '<article class="next-work-card" aria-label="'+item.car+' '+item.year+'"><div class="next-work-header"><span>'+icons.car+'</span><time datetime="'+item.iso+'">'+item.date+'</time></div><div class="next-work-identity"><h3>'+item.car+'</h3><p>'+item.year+' год</p></div><ul class="next-work-summary">'+item.items.map(row=>'<li>'+row[0]+'</li>').join('')+'</ul><div class="next-work-footer"><div><small>Итого за работы</small><strong>'+fmt(item.total)+'</strong></div><button type="button" class="next-work-view" data-action="work-details" data-work-id="'+item.id+'">Смотреть работы '+icons.arrow+'</button></div></article>';
@@ -44,21 +47,23 @@ function addNextProduct(id,qty){
 }
 function adjustProductQuantity(id,delta){
  const p=nextProducts.find(x=>x.id===id);if(!p||p.stock<1)return;
- nextQuantities[id]=Math.max(1,Math.min(p.stock,(nextQuantities[id]||1)+delta));
+ nextQuantities[id]=Math.max(1,Math.min(p.stock,selectedProductQuantity(p)+delta));
  const value=$('[data-quantity="'+id+'"]');if(value)value.textContent=nextQuantities[id];
+ const total=$('[data-product-total="'+id+'"]');if(total&&p.price!==null)total.textContent=nextQuantities[id]+' шт. · '+fmt(p.price*nextQuantities[id]);
  const card=value?.closest('.next-product-card');
  card?.querySelector('[data-action="qty-down"]').toggleAttribute('disabled',nextQuantities[id]===1);
  card?.querySelector('[data-action="qty-up"]').toggleAttribute('disabled',nextQuantities[id]===p.stock);
 }
 function openProductDetails(id){
  const p=nextProducts.find(x=>x.id===id);if(!p)return;
- const price=p.price===null?'Цена уточняется':fmt(p.price)+' за 1 шт.';
- const body='<div class="next-detail-kicker">ДЕМО-КАРТОЧКА · ДАННЫЕ ВЫМЫШЛЕНЫ</div><div class="next-detail-product"><div class="next-product-media">'+tireGraphic+'</div><div><span class="next-product-brand">'+p.brand+' · '+p.season+'</span><h3>'+p.model+'</h3><p>'+p.size+(p.tags.length?' · '+p.tags.join(' · '):'')+'</p></div></div><dl class="next-detail-facts"><div><dt>Цена</dt><dd>'+price+'</dd></div><div><dt>Наличие</dt><dd>'+p.status+'</dd></div><div><dt>Получение</dt><dd>'+p.delivery+'</dd></div></dl><p class="next-prototype-note">Избранное и корзина работают только в этом демонстрационном прототипе.</p>';
+ const qty=selectedProductQuantity(p),price=p.price===null?'Цена по запросу':fmt(p.price)+' / шт.';
+ const total=p.price!==null&&qty>0?'<div><dt>Итого за '+qty+' шт.</dt><dd>'+fmt(p.price*qty)+'</dd></div>':'';
+ const body='<div class="next-detail-kicker">ДЕМО-КАРТОЧКА · ДАННЫЕ ВЫМЫШЛЕНЫ</div><div class="next-detail-product"><div class="next-product-media">'+tireGraphic+'</div><div><span class="next-product-brand">'+p.brand+' · '+p.season+'</span><h3>'+p.model+'</h3><p>'+p.size+(p.tags.length?' · '+p.tags.join(' · '):'')+'</p></div></div><dl class="next-detail-facts"><div><dt>Цена за штуку</dt><dd>'+price+'</dd></div>'+total+'<div><dt>Наличие</dt><dd>'+p.status+'</dd></div><div><dt>Получение</dt><dd>'+p.delivery+'</dd></div></dl><p class="next-prototype-note">Избранное и корзина работают только в этом демонстрационном прототипе.</p>';
  const action=p.stock>0?'<button type="button" class="button primary" data-action="product-add" data-product-id="'+p.id+'">'+(p.kind==='delivery'?'Запросить поставку':'В корзину')+'</button>':'<button type="button" class="button primary" data-action="product-question" data-product-id="'+p.id+'">Уточнить у сервиса</button>';
  openModal(p.brand+' '+p.model,body,'<button type="button" class="button secondary" data-action="close-modal">Закрыть</button>'+action);
 }
 function openNextCart(){
- const lines=nextProducts.filter(p=>nextCart[p.id]).map(p=>'<li><span>'+p.brand+' '+p.model+' · '+nextCart[p.id]+' шт.</span><b>'+(p.price===null?'Цена по запросу':fmt(p.price*nextCart[p.id]))+'</b></li>').join('');
+ const lines=nextProducts.filter(p=>nextCart[p.id]).map(p=>'<li><span><strong>'+p.brand+' '+p.model+'</strong><small>'+nextCart[p.id]+' шт.'+(p.price===null?'':' × '+fmt(p.price)+' / шт.')+'</small></span><b>'+(p.price===null?'Цена по запросу':fmt(p.price*nextCart[p.id]))+'</b></li>').join('');
  openModal('Демо-корзина',lines?'<ul class="next-cart-lines">'+lines+'</ul><p class="next-prototype-note">Это локальное состояние прототипа. Заказ или заявка не отправляются.</p>':'<div class="next-empty-cart"><span>▧</span><h3>Корзина пока пуста</h3><p>Добавленные товары появятся здесь только в этом демо.</p></div>','<button type="button" class="button primary" data-action="close-modal">Продолжить просмотр</button>');
 }
 function openWorkDetails(id){
@@ -68,9 +73,21 @@ function openWorkDetails(id){
  const body='<div class="next-detail-kicker">ДЕМО-ПРИМЕР · ДАННЫЕ ВЫМЫШЛЕНЫ</div><div class="next-work-detail-identity"><h3>'+item.car+' · '+item.year+'</h3><time datetime="'+item.iso+'">'+item.date+'</time></div><ul class="next-work-detail-list">'+lines+'</ul>'+total;
  openModal('Выполненные работы',body,'<button type="button" class="button secondary" data-action="work-ask">Спросить</button><button type="button" class="button primary" data-action="work-booking">Записаться</button>');
 }
+const heroSlides=[
+ {file:'service_10',alt:'Фасад КОЛЕСОВИК и автомобили на сервисных подъёмниках',desktop:'50% 36%',mobile:'50% 32%'},
+ {file:'service_2',alt:'Автомобиль на подъёмнике внутри ремонтной зоны',desktop:'50% 44%',mobile:'50% 46%'},
+ {file:'service_7',alt:'Автомобиль с открытым капотом в сервисе',desktop:'56% 50%',mobile:'58% 50%'},
+ {file:'service_3',alt:'Дневной вид сервиса КОЛЕСОВИК и автомобиля',desktop:'50% 66%',mobile:'49% 58%'},
+ {file:'service_5',alt:'Вечерний вид КОЛЕСОВИК с открытыми сервисными постами',desktop:'52% 65%',mobile:'52% 60%'}
+];
+const heroSource=slide=>'assets/service-gallery/'+slide.file+(matchMedia('(max-width:767px)').matches?'-mobile':'')+'.webp';
+function heroSliderMarkup(){
+ const slides=heroSlides.map((slide,index)=>`<div class="next-hero-slide${index===0?' is-active':''}" role="group" aria-roledescription="слайд" aria-label="${index+1} из ${heroSlides.length}: ${slide.alt}" aria-hidden="${index!==0}" style="--hero-crop-desktop:${slide.desktop};--hero-crop-mobile:${slide.mobile}"><img data-hero-image="${index}" ${index===0?`src="${heroSource(slide)}" fetchpriority="high"`:'data-pending="true"'} width="1448" height="1086" alt="${slide.alt}" decoding="async"></div>`).join('');
+ return `<div class="next-photo-scene" id="next-hero-slider" role="region" aria-roledescription="карусель" aria-label="Фотографии сервиса КОЛЕСОВИК" tabindex="0">${slides}<div class="next-photo-controls"><button type="button" data-action="hero-prev" aria-label="Предыдущее фото">${icons.arrow}</button><output id="next-hero-position" aria-live="off">1 / ${heroSlides.length}</output><button type="button" data-action="hero-next" aria-label="Следующее фото">${icons.arrow}</button></div></div>`;
+}
 function publicPage(){
  return '<div class="next-home"><header class="next-header next-container">'+topBrand()+'<nav class="next-nav" aria-label="Главная навигация"><a href="#directions">Направления</a><a href="#tires">Шины</a><a href="#works">Работы</a><a href="#contacts">Контакты</a></nav><div class="next-header-actions"><button type="button" class="next-account" data-action="next-login">'+userIcon+' '+(nextSession.authenticated?'Кабинет':'Войти')+'</button><button type="button" class="next-menu" aria-expanded="false" data-action="menu" aria-label="Открыть меню"><span></span><span></span></button></div></header>'+
- '<section class="next-hero next-container"><div class="next-hero-copy"><div class="eyebrow"><span class="next-eyebrow-line"></span>КОЛЕСОВИК · СЕРВИСНАЯ ЭКОСИСТЕМА</div><h1>Забота об автомобиле<br><em>в одном месте.</em></h1><p class="next-hero-lead">Обслуживание, понятные рекомендации и история работ — в цифровом сервисе, который остаётся рядом.</p><div class="next-hero-buttons"><button class="button primary large" data-action="next-booking">Записаться '+icons.arrow+'</button><button class="button secondary large" data-action="ask">'+icons.chat+' Спросить</button></div><div class="next-assurance"><span class="next-assurance-mark">✓</span><span>Помогаем разобраться в состоянии автомобиля<br>и выбрать следующий шаг</span></div></div><div class="next-hero-visual"><div class="next-photo-scene" role="img" aria-label="Механик обслуживает автомобиль в сервисе КОЛЕСОВИК"></div><div class="next-photo-caption"><span class="next-caption-pin">⌖</span><span><strong>Сервис рядом с вами</strong><small>КОЛЕСОВИК · Подольск</small></span><span class="next-caption-arrow">↗</span></div></div><div class="next-hero-bottom"><span>СЕРВИС С ПОНЯТНЫМ СЛЕДУЮЩИМ ШАГОМ</span><span>ПОДОЛЬСК · РАБОТАЕМ РЯДОМ</span></div></section>'+
+ '<section class="next-hero next-container"><div class="next-hero-copy"><div class="eyebrow"><span class="next-eyebrow-line"></span>КОЛЕСОВИК · СЕРВИСНАЯ ЭКОСИСТЕМА</div><h1>Забота об автомобиле<br><em>в одном месте.</em></h1><p class="next-hero-lead">Обслуживание, понятные рекомендации и история работ — в цифровом сервисе, который остаётся рядом.</p><div class="next-hero-buttons"><button class="button primary large" data-action="next-booking">Записаться '+icons.arrow+'</button><button class="button secondary large" data-action="ask">'+icons.chat+' Спросить</button></div><div class="next-assurance"><span class="next-assurance-mark">✓</span><span>Помогаем разобраться в состоянии автомобиля<br>и выбрать следующий шаг</span></div></div><div class="next-hero-visual">'+heroSliderMarkup()+'<div class="next-photo-caption"><span class="next-caption-pin">⌖</span><span><strong>Сервис рядом с вами</strong><small>КОЛЕСОВИК · Подольск</small></span><span class="next-caption-arrow">↗</span></div></div><div class="next-hero-bottom"><span>СЕРВИС С ПОНЯТНЫМ СЛЕДУЮЩИМ ШАГОМ</span><span>ПОДОЛЬСК · РАБОТАЕМ РЯДОМ</span></div></section>'+
  '<section class="next-directions next-section next-container" id="directions"><div class="next-section-heading"><div><div class="eyebrow">ЧЕМ ПОМОЧЬ</div><h2>Ваш автомобиль.<br class="mobile-only"> Наше внимание.</h2></div><span class="next-section-count">01 — 03</span></div><div class="next-direction-list"><article class="next-direction"><span class="next-direction-number">01</span><div class="next-direction-icon">'+icons.wrench+'</div><div class="next-direction-copy"><h3>Обслуживание и ремонт</h3><p>От планового ТО до точной диагностики — с понятным результатом.</p></div><button class="next-row-action" data-action="next-booking" aria-label="Записаться на обслуживание">'+icons.arrow+'</button></article><article class="next-direction"><span class="next-direction-number">02</span><div class="next-direction-icon">'+icons.car+'</div><div class="next-direction-copy"><h3>История автомобиля</h3><p>Работы, документы и рекомендации собраны в личном кабинете.</p></div><button class="next-row-action" data-action="next-login" aria-label="Войти в личный кабинет">'+icons.arrow+'</button></article><article class="next-direction"><span class="next-direction-number">03</span><div class="next-direction-icon tire-icon">◉</div><div class="next-direction-copy"><h3>Шины и сезонная подготовка</h3><p>Поможем подобрать комплект под автомобиль и сезон.</p></div><a class="next-row-action" href="#tires" aria-label="Перейти к подборке шин">'+icons.arrow+'</a></article></div></section>'+
  '<section class="next-products-section next-section next-container" id="tires" aria-labelledby="next-products-title"><div class="next-section-heading"><div><div class="eyebrow">ШИНЫ ДЛЯ ВАШЕГО АВТОМОБИЛЯ</div><h2 id="next-products-title">Популярные шины</h2><p>Модель, размер и наличие — сразу в карточке.</p></div></div><div class="next-rail-toolbar"><button type="button" class="next-cart-button" data-action="product-cart" aria-label="Открыть демо-корзину">Корзина <span id="next-cart-count">'+nextCartCount()+'</span></button><div class="next-rail-tools"><button type="button" class="next-rail-button" data-action="rail-step" data-rail="products-rail" data-direction="-1" aria-controls="products-rail" aria-label="Предыдущая карточка" disabled>'+icons.arrow+'</button><button type="button" class="next-rail-button" data-action="rail-step" data-rail="products-rail" data-direction="1" aria-controls="products-rail" aria-label="Следующая карточка">'+icons.arrow+'</button></div></div><div class="next-products-grid" id="products-rail" role="region" aria-label="Популярные шины" tabindex="0">'+productCards()+'</div><p class="sr-only" id="next-live" role="status" aria-live="polite"></p><p class="next-prototype-note next-products-note">Товары, цены и остатки вымышлены. Действия не создают заказ или обращение.</p></section>'+
  '<section class="next-works-section next-section next-container" id="works" aria-labelledby="next-works-title"><div class="next-section-heading"><div><div class="eyebrow">ПРОЗРАЧНАЯ СТОИМОСТЬ</div><h2 id="next-works-title">Выполненные работы</h2><p>Автомобиль, выполненные работы и понятный итог.</p></div></div><div class="next-rail-toolbar"><div class="next-rail-tools"><button type="button" class="next-rail-button" data-action="rail-step" data-rail="works-rail" data-direction="-1" aria-controls="works-rail" aria-label="Предыдущая карточка" disabled>'+icons.arrow+'</button><button type="button" class="next-rail-button" data-action="rail-step" data-rail="works-rail" data-direction="1" aria-controls="works-rail" aria-label="Следующая карточка">'+icons.arrow+'</button></div></div><div class="next-works-grid" id="works-rail" role="region" aria-label="Выполненные работы" tabindex="0">'+workCards()+'</div></section>'+
@@ -99,11 +116,11 @@ const nextBranch = 'Подольск · Станционная, 11/1';
 const userIcon = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>';
 const escapeText = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nextSession = {authenticated:false};
-const serviceWorkspace = {open:false,mode:'ask',branch:'',messages:[],draft:'',scenario:'new',delivery:'idle',pending:null,timer:null,auth:null,notice:''};
+const serviceWorkspace = {open:false,mode:'ask',branch:'podolsk',messages:[],draft:'',scenario:'new',delivery:'idle',pending:null,timer:null,auth:null,notice:''};
 const nextBooking = {step:1,month:9,date:'',service:'',time:'',make:'',model:'',plate:'',vehicleSource:'',showOtherVehicle:false,noSlots:false,confirmed:false};
 const nextVehicleModels = {Toyota:['Camry','Corolla'],Kia:['Rio','Sportage'],Skoda:['Octavia','Rapid']};
 const bookingSteps = ['Дата','Услуга','Время','Автомобиль','Подтверждение'];
-let nextAuth = {stage:'phone',phone:'',phoneDigits:'',name:'',error:''};
+let nextAuth = {stage:'phone',phone:'',phoneDigits:'',name:'',error:'',attempted:false};
 function workspaceHeader(){
  const ask=serviceWorkspace.mode==='ask';
  const title=ask?'<h2 id="workspace-title">КОЛЕСОВИК</h2>':'<span class="next-ws-brand">КОЛЕСОВИК</span><h2 id="workspace-title">Запись</h2>';
@@ -114,7 +131,8 @@ const microphoneIcon='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><r
 function openServiceWorkspace(mode,branch){
  if(!serviceWorkspace.open)overlayReturn=document.activeElement;
  serviceWorkspace.open=true;serviceWorkspace.mode=mode;serviceWorkspace.auth=null;
- if(branch||mode==='booking')serviceWorkspace.branch='podolsk';
+ // Current product source pins Ask and Booking to one service branch. Keep branch state for future multi-branch support.
+ serviceWorkspace.branch='podolsk';
  lockBackground();
  $('#overlay-root').innerHTML='<div class="next-ws-backdrop" data-action="ws-backdrop"><section class="next-service-workspace" role="dialog" aria-modal="true" aria-labelledby="workspace-title" tabindex="-1"></section></div>';
  renderWorkspace('[data-action="ws-close"]');
@@ -149,7 +167,6 @@ function chatMessage(message){
 }
 function askContent(){
  const s=serviceWorkspace,closed=s.scenario==='closed',busy=s.delivery==='sending',uncertain=s.delivery==='uncertain',typed=Boolean(s.draft.trim());
- const branch=s.branch?'':`<div class="next-chat-branch"><label for="next-chat-branch">Филиал</label><select id="next-chat-branch"><option value="">Выберите филиал</option><option value="podolsk">${nextBranch}</option></select></div>`;
  const empty='<div class="next-chat-welcome"><h3 id="workspace-heading" tabindex="-1">Начните разговор</h3><p>Ответим здесь, в истории общения с сервисом.</p></div>';
  const scenarios=`<details class="next-ws-demo"><summary>Сценарии прототипа</summary><label for="next-chat-scenario">Состояние диалога</label><select id="next-chat-scenario">${[['new','Новый диалог'],['history','История и события'],['sending','Отправляется'],['received','Ответ администратора'],['uncertain','Доставка не подтверждена'],['closed','Закрытая переписка / история']].map(([value,label])=>`<option value="${value}" ${s.scenario===value?'selected':''}>${label}</option>`).join('')}</select></details>`;
  const messageContent=s.messages.length?'<p class="next-chat-date">Сегодня</p>'+s.messages.map(chatMessage).join(''):empty;
@@ -157,7 +174,7 @@ function askContent(){
  const notice=s.notice?`<p class="next-chat-affordance" role="status">${escapeText(s.notice)}</p>`:'';
  const submit=typed?`<button id="next-chat-send" class="next-chat-send is-send" type="submit" aria-label="Отправить сообщение" ${busy||uncertain?'disabled':''}>${busy?'…':icons.arrow}</button>`:`<button id="next-chat-send" class="next-chat-send" type="button" data-action="ws-dictate" aria-label="Диктовка — будущая функция">${microphoneIcon}</button>`;
  const composer=closed?'<div class="next-chat-closed"><p>История доступна. Можно продолжить разговор.</p><button class="button primary" data-action="ws-continue-chat">Продолжить общение</button></div>':`<form class="next-chat-composer" id="next-chat-composer">${uncertain?'<div class="next-chat-notice" role="status"><strong>Доставка не подтверждена</strong><p>Проверьте историю перед повтором.</p><button type="button" class="next-ws-text-action" data-action="ws-retry">Проверить и повторить</button></div>':''}${notice}<div class="next-chat-composer-row"><button type="button" class="next-chat-attach" data-action="ws-attach" aria-label="Вложения — будущая функция">${attachmentIcon}</button><label class="sr-only" for="next-chat-input">Сообщение сервису</label><textarea id="next-chat-input" rows="1" maxlength="4000" placeholder="Сообщение" ${!s.branch||busy||uncertain?'disabled':''}>${escapeText(s.draft)}</textarea>${submit}</div></form>`;
- return `<div class="next-ask-layout"><div class="next-ws-context-row"><span>${closed?'История':'На связи'}</span><button class="next-ws-text-action" data-action="ws-mode" data-mode="booking">Записаться ${icons.arrow}</button></div><div class="next-chat-history" id="next-chat-history" role="log" aria-label="История общения" aria-live="polite">${branch}${scenarios}${messageContent}${actions}</div>${composer}</div>`;
+ return `<div class="next-ask-layout"><div class="next-ws-context-row"><span>${closed?'История':'На связи'}</span><button class="next-ws-text-action" data-action="ws-mode" data-mode="booking">Записаться ${icons.arrow}</button></div><div class="next-chat-history" id="next-chat-history" role="log" aria-label="История общения" aria-live="polite">${scenarios}${messageContent}${actions}</div>${composer}</div>`;
 }
 function resizeChatComposer(input){
  input.style.height='auto';
@@ -171,7 +188,7 @@ function resizeChatComposer(input){
  button.disabled=serviceWorkspace.delivery==='sending'||serviceWorkspace.delivery==='uncertain'||(typed&&!serviceWorkspace.branch);
 }
 function seedChat(scenario){
- clearTimeout(serviceWorkspace.timer);Object.assign(serviceWorkspace,{scenario,delivery:'idle',pending:null,draft:'',branch:scenario==='new'?'':'podolsk'});
+ clearTimeout(serviceWorkspace.timer);Object.assign(serviceWorkspace,{scenario,delivery:'idle',pending:null,draft:'',branch:'podolsk'});
  serviceWorkspace.messages=scenario==='new'?[]:[{kind:'customer',text:'Здравствуйте! Можно подобрать зимние шины и записаться на шиномонтаж?',time:'12:16'},{kind:'admin',text:'Здравствуйте! Да, поможем с комплектом под ваш автомобиль. Вот один из вариантов.',time:'12:20'},{kind:'product',time:'12:21'},{kind:'system',text:'Администратор подключился',detail:'Контекст вопроса передан команде филиала',time:'12:21'},{kind:'booking',time:'12:24'}];
  if(['sending','uncertain'].includes(scenario)){const pending={kind:'customer',text:'Спасибо! Подскажите, пожалуйста, по подготовке к визиту.',time:'сейчас',pending:true};serviceWorkspace.messages.push(pending);serviceWorkspace.pending=pending;serviceWorkspace.delivery=scenario}
  renderWorkspace('#next-chat-input');
@@ -213,17 +230,36 @@ function bookingContent(){
  return `<div class="next-booking-layout"><div class="next-booking-progress"><span>Шаг ${b.step} из 5 · ${bookingSteps[b.step-1]}</span><div role="progressbar" aria-label="Шаги записи" aria-valuemin="1" aria-valuemax="5" aria-valuenow="${b.step}"><i style="width:${b.step*20}%"></i></div></div><div class="next-ws-scroll">${heading}${content}</div><footer class="next-booking-actions">${b.step>1?'<button class="next-ws-text-action" data-action="ws-back">← Назад</button>':'<button class="next-ws-text-action" data-action="ws-mode" data-mode="ask">Спросить сервис</button>'}<button class="button primary" data-action="${b.step===5?'ws-confirm':'ws-next'}" ${ready?'':'disabled'}>${b.step===5?'Записаться':'Продолжить'}</button></footer></div>`;
 }
 function formatNationalPhone(digits){if(!digits)return '';const a=digits.slice(0,3),b=digits.slice(3,6),c=digits.slice(6,8),d=digits.slice(8,10);return '('+a+(a.length===3?') ':'')+b+(c?'-'+c:'')+(d?'-'+d:'')}
+function phoneCaretPosition(formatted,count){if(!count)return formatted?1:0;let seen=0;for(let i=0;i<formatted.length;i++){if(/\d/.test(formatted[i])&&++seen===count){let cursor=i+1;while(cursor<formatted.length&&!/\d/.test(formatted[cursor]))cursor++;return cursor}}return formatted.length}
+function syncPhoneValidation(){
+ if(nextAuth.stage!=='phone')return;
+ const incomplete=nextAuth.phoneDigits.length!==10;
+ if(nextAuth.attempted)nextAuth.error=incomplete?'Введите номер полностью':nextAuth.error==='Введите номер полностью'?'':nextAuth.error;
+ const error=$('.next-auth-error'),button=$('#next-auth-form .button.primary');
+ if(error)error.textContent=nextAuth.error;
+ if(button)button.disabled=nextAuth.attempted&&incomplete;
+}
+function normalizePhoneInput(input){
+ const raw=input.value,caret=input.selectionStart??raw.length;
+ let digitsBefore=(raw.slice(0,caret).match(/\d/g)||[]).length;
+ let digits=raw.replace(/\D/g,'');
+ if(digits.length>10&&['7','8'].includes(digits[0])){digits=digits.slice(1);digitsBefore=Math.max(0,digitsBefore-1)}
+ nextAuth.phoneDigits=digits.slice(0,10);
+ const formatted=formatNationalPhone(nextAuth.phoneDigits)||(document.activeElement===input?'(':'');
+ input.value=formatted;const position=phoneCaretPosition(formatted,Math.min(digitsBefore,nextAuth.phoneDigits.length));
+ input.setSelectionRange(position,position);syncPhoneValidation();
+}
 function authContent(inWorkspace=false){
  const code=nextAuth.stage==='code',success=nextAuth.stage==='success';
- const phoneField=code?`<label for="next-auth-input">Код из SMS<input id="next-auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required></label>`:`<label for="next-auth-input">Телефон<span class="next-auth-phone-field"><span class="next-auth-prefix" aria-hidden="true">+7</span><input id="next-auth-input" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="18" value="${escapeText(formatNationalPhone(nextAuth.phoneDigits))}" placeholder="(___) ___-__-__" aria-label="Мобильный номер без кода страны" required></span></label>`;
- return `<div class="next-auth ${inWorkspace?'next-ws-scroll':''}"><span class="next-ws-kicker">ВХОД В КОЛЕСОВИК</span><h3 id="workspace-heading" tabindex="-1">${success?'Вы вошли':code?'Код из SMS':'Войти по телефону'}</h3>${code?'<p>Код для '+escapeText(nextAuth.phone)+'</p>':''}${success?`<div class="next-ws-result-mark">✓</div><button class="button primary" data-action="auth-done">${inWorkspace?'Продолжить запись':'Готово'}</button>`:`<form id="next-auth-form">${phoneField}${!code?'<label for="next-auth-name">Как к вам обращаться<input id="next-auth-name" autocomplete="given-name" maxlength="50" value="'+escapeText(nextAuth.name)+'" required></label>':''}<p class="next-auth-error" role="alert">${escapeText(nextAuth.error)}</p><button class="button primary">${code?'Войти':'Получить код'}</button>${code?'<button type="button" class="next-ws-text-action" data-action="auth-phone">Изменить телефон</button>':''}<p class="next-ws-note">${code?'Демо-код: 123456. SMS не отправлялось.':'Демонстрация · SMS не отправляется.'}</p></form>`}${inWorkspace?'<button class="next-ws-text-action" data-action="auth-cancel">← Вернуться к записи</button>':''}</div>`;
+ const phoneField=code?`<label for="next-auth-input">Код из SMS<input id="next-auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>`:`<label for="next-auth-input">Телефон<span class="next-auth-phone-field"><span class="next-auth-prefix" aria-hidden="true">+7</span><input id="next-auth-input" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="24" value="${escapeText(formatNationalPhone(nextAuth.phoneDigits))}" placeholder="(___) ___-__-__" aria-label="Мобильный номер без кода страны"></span></label>`;
+ return `<div class="next-auth ${inWorkspace?'next-ws-scroll':''}"><span class="next-ws-kicker">ВХОД В КОЛЕСОВИК</span><h3 id="workspace-heading" tabindex="-1">${success?'Вы вошли':code?'Код из SMS':'Войти по телефону'}</h3>${code?'<p>Код для '+escapeText(nextAuth.phone)+'</p>':''}${success?`<div class="next-ws-result-mark">✓</div><button class="button primary" data-action="auth-done">${inWorkspace?'Продолжить запись':'Готово'}</button>`:`<form id="next-auth-form" novalidate>${phoneField}${!code?'<label for="next-auth-name">Как к вам обращаться<input id="next-auth-name" autocomplete="given-name" maxlength="50" value="'+escapeText(nextAuth.name)+'"></label>':''}<p class="next-auth-error" role="alert">${escapeText(nextAuth.error)}</p><button class="button primary" ${!code&&nextAuth.attempted&&nextAuth.phoneDigits.length!==10?'disabled':''}>${code?'Войти':'Получить код'}</button>${code?'<button type="button" class="next-ws-text-action" data-action="auth-phone">Изменить телефон</button>':''}<p class="next-ws-note">${code?'Демо-код: 123456. SMS не отправлялось.':'Демонстрация · SMS не отправляется.'}</p></form>`}${inWorkspace?'<button class="next-ws-text-action" data-action="auth-cancel">← Вернуться к записи</button>':''}</div>`;
 }
 function refreshAuth(){
  if(serviceWorkspace.open){renderWorkspace('#next-auth-input');return}
  $('.next-modal .modal-body').innerHTML=authContent();$('#next-auth-input')?.focus();
 }
 function openNextAuth(inWorkspace=false){
- nextAuth={stage:'phone',phone:'',phoneDigits:'',name:'',error:''};
+ nextAuth={stage:'phone',phone:'',phoneDigits:'',name:'',error:'',attempted:false};
  if(inWorkspace){serviceWorkspace.auth=true;renderWorkspace('#next-auth-input')}
  else{openModal('Войти',authContent(),'');$('#next-auth-input')?.focus()}
 }
@@ -235,10 +271,11 @@ function updateNextIdentity(){
 function submitNextAuth(){
  const value=$('#next-auth-input').value.trim();nextAuth.error='';
  if(nextAuth.stage==='phone'){
-  const digits=nextAuth.phoneDigits||value.replace(/\D/g,'').slice(0,10);nextAuth.phoneDigits=digits;nextAuth.name=$('#next-auth-name').value.trim();
-  if(digits.length!==10||!nextAuth.name){nextAuth.error='Введите имя и 10 цифр номера.';refreshAuth();return}
+  const digits=nextAuth.phoneDigits;nextAuth.name=$('#next-auth-name').value.trim();nextAuth.attempted=true;
+  if(digits.length!==10){nextAuth.error='Введите номер полностью';refreshAuth();return}
+  if(!nextAuth.name){nextAuth.error='Укажите имя.';refreshAuth();$('#next-auth-name')?.focus();return}
   nextAuth.phone='+7 '+formatNationalPhone(digits);nextAuth.stage='code';
- }else if(value==='123456'){nextSession.authenticated=true;nextAuth.stage='success';updateNextIdentity()}else{nextAuth.error='Код не совпал. Демо-код: 123456.'}
+ }else if(value==='123456'){nextSession.authenticated=true;nextAuth.stage='success';updateNextIdentity()}else{nextAuth.error=value.length<6?'Введите код полностью.':'Код не совпал. Демо-код: 123456.'}
  refreshAuth();if(nextAuth.stage==='success')$('[data-action="auth-done"]')?.focus();
 }
 function workspaceAction(name,el){
@@ -274,9 +311,22 @@ document.addEventListener('submit',event=>{
  if(event.target.id==='next-chat-composer'){event.preventDefault();serviceWorkspace.draft=$('#next-chat-input').value;transmitMockMessage()}
  if(event.target.id==='next-auth-form'){event.preventDefault();submitNextAuth()}
 });
+document.addEventListener('focusin',event=>{
+ const input=event.target;if(input.id!=='next-auth-input'||nextAuth.stage!=='phone')return;
+ if(!nextAuth.phoneDigits.length)input.value='(';
+ requestAnimationFrame(()=>{if(document.activeElement===input){const end=input.value.length;input.setSelectionRange(end,end)}});
+});
+document.addEventListener('focusout',event=>{if(event.target.id==='next-auth-input'&&nextAuth.stage==='phone'&&!nextAuth.phoneDigits.length)event.target.value=''});
+document.addEventListener('beforeinput',event=>{
+ const input=event.target;if(input.id!=='next-auth-input'||nextAuth.stage!=='phone'||input.selectionStart!==input.selectionEnd)return;
+ const caret=input.selectionStart,value=input.value;
+ if(event.inputType==='deleteContentBackward'&&caret>0&&!/\d/.test(value[caret-1])){let i=caret-1;while(i>=0&&!/\d/.test(value[i]))i--;if(i>=0)input.setSelectionRange(i,caret)}
+ if(event.inputType==='deleteContentForward'&&caret<value.length&&!/\d/.test(value[caret])){let i=caret;while(i<value.length&&!/\d/.test(value[i]))i++;if(i<value.length)input.setSelectionRange(caret,i+1)}
+});
 document.addEventListener('input',event=>{
  if(event.target.id==='next-chat-input'){serviceWorkspace.draft=event.target.value;resizeChatComposer(event.target);if(serviceWorkspace.notice){serviceWorkspace.notice='';$('.next-chat-affordance')?.remove()}}
- if(event.target.id==='next-auth-input'&&nextAuth.stage==='phone'){let digits=event.target.value.replace(/\D/g,'');if(digits.length===11&&['7','8'].includes(digits[0]))digits=digits.slice(1);nextAuth.phoneDigits=digits.slice(0,10);event.target.value=formatNationalPhone(nextAuth.phoneDigits)}
+ if(event.target.id==='next-auth-input'&&nextAuth.stage==='phone')normalizePhoneInput(event.target);
+ if(event.target.id==='next-auth-name'&&nextAuth.stage==='phone'){nextAuth.name=event.target.value;if(nextAuth.error==='Укажите имя.'&&nextAuth.name.trim()){nextAuth.error='';$('.next-auth-error').textContent=''}}
  if(event.target.id==='next-vehicle-plate')nextBooking.plate=event.target.value;
 });
 document.addEventListener('change',event=>{
@@ -305,12 +355,13 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Tab'){const f=[...d.querySelectorAll('button,input,select,textarea,summary,[href],[tabindex]:not([tabindex="-1"])')].filter(x=>!x.disabled&&x.getClientRects().length);if(!f.length){e.preventDefault();d.focus();return}const first=f[0],last=f[f.length-1];if(e.shiftKey&&(document.activeElement===first||!f.includes(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&(document.activeElement===last||!f.includes(document.activeElement))){e.preventDefault();first.focus()}}
 });
 const action=(name,el)=>{if(name.startsWith('ws-')||name.startsWith('auth-')){workspaceAction(name,el)}
+else if(name==='hero-prev'||name==='hero-next'){heroGo(name==='hero-next'?1:-1)}
 else if(name==='next-booking'){openServiceWorkspace('booking')}
 else if(name==='next-login'){if(nextSession.authenticated){customerTab='Главная';setScreen('customer')}else openNextAuth()}
 else if(name==='rail-step'){stepRail(document.getElementById(el.dataset.rail),Number(el.dataset.direction))}
 else if(name==='product-details'){openProductDetails(el.dataset.productId)}
 else if(name==='product-favorite'){const id=el.dataset.productId;const selected=!nextFavorites.has(id);if(selected)nextFavorites.add(id);else nextFavorites.delete(id);el.classList.toggle('is-favorite',selected);el.setAttribute('aria-pressed',String(selected));const p=nextProducts.find(x=>x.id===id);el.setAttribute('aria-label',(selected?'Убрать из избранного: ':'В избранное: ')+p.brand+' '+p.model)}
-else if(name==='product-add'){const wasModal=Boolean($('.modal,.next-modal'));addNextProduct(el.dataset.productId,nextQuantities[el.dataset.productId]||1);if(wasModal)closeModal()}
+else if(name==='product-add'){const wasModal=Boolean($('.modal,.next-modal')),p=nextProducts.find(item=>item.id===el.dataset.productId);if(p)addNextProduct(p.id,selectedProductQuantity(p));if(wasModal)closeModal()}
 else if(name==='product-cart'){openNextCart()}
 else if(name==='product-question'){const p=nextProducts.find(x=>x.id===el.dataset.productId);openModal('Уточнить по товару','<p><strong>'+p.brand+' '+p.model+'</strong></p><p>'+p.size+' · '+p.delivery+'</p><p>Это локальная демонстрация: товарный запрос не отправляется.</p>','<button type="button" class="button secondary" data-action="close-modal">Закрыть</button><button type="button" class="button primary" data-action="product-ask">Спросить сервис</button>')}
 else if(name==='product-ask'){closeModal();action('ask')}
@@ -339,7 +390,49 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-action="cancel-
 // Rails have one scroll owner, user-controlled buttons, keyboard and focus reveal.
 function railState(rail){const max=rail.scrollWidth-rail.clientWidth;document.querySelectorAll('[data-rail="'+rail.id+'"]').forEach(b=>b.disabled=max<2||(Number(b.dataset.direction)<0?rail.scrollLeft<=2:rail.scrollLeft>=max-2))}
 function stepRail(rail,direction){if(rail.scrollWidth<=rail.clientWidth+2)return;const width=rail.firstElementChild.getBoundingClientRect().width;rail.scrollBy({left:direction*(width+14),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}
+const heroMotion=matchMedia('(prefers-reduced-motion: reduce)');
+const heroState={root:null,index:0,target:0,token:0,timer:null,pausedUntil:0,hovered:false,focused:false,mobile:false};
+function heroLoad(index){
+ const image=heroState.root?.querySelector('[data-hero-image="'+index+'"]');if(!image)return Promise.reject(new Error('Hero image unavailable'));
+ const src=heroSource(heroSlides[index]);if(image.getAttribute('src')!==src)image.src=src;
+ return image.decode?image.decode():Promise.resolve();
+}
+function heroSchedule(){
+ clearTimeout(heroState.timer);
+ if(!heroState.root?.isConnected||heroMotion.matches||document.hidden||heroState.hovered||heroState.focused)return;
+ const delay=Math.max(7600,heroState.pausedUntil-Date.now()+7600);
+ heroState.timer=setTimeout(()=>heroGo(1,false),delay);
+}
+async function heroGo(direction,manual=true){
+ const root=heroState.root;if(!root?.isConnected)return;
+ if(manual){heroState.pausedUntil=Date.now()+11000;clearTimeout(heroState.timer)}
+ const next=((heroState.target+direction)%heroSlides.length+heroSlides.length)%heroSlides.length;
+ heroState.target=next;const token=++heroState.token;
+ try{await heroLoad(next)}catch{if(token===heroState.token){heroState.target=heroState.index;heroSchedule()}return}
+ if(token!==heroState.token||!root.isConnected)return;
+ root.querySelectorAll('.next-hero-slide').forEach((slide,index)=>{slide.classList.toggle('is-active',index===next);slide.setAttribute('aria-hidden',String(index!==next))});
+ heroState.index=next;root.querySelector('#next-hero-position').textContent=(next+1)+' / '+heroSlides.length;
+ setTimeout(()=>{if(root.isConnected)heroLoad((next+1)%heroSlides.length).catch(()=>{})},1500);
+ heroSchedule();
+}
+function setupHeroSlider(){
+ clearTimeout(heroState.timer);const root=$('#next-hero-slider');if(!root)return;
+ Object.assign(heroState,{root,index:0,target:0,token:0,pausedUntil:0,hovered:false,focused:false,mobile:matchMedia('(max-width:767px)').matches});
+ root.addEventListener('mouseenter',()=>{heroState.hovered=true;clearTimeout(heroState.timer)});
+ root.addEventListener('mouseleave',()=>{heroState.hovered=false;heroSchedule()});
+ root.addEventListener('focusin',()=>{heroState.focused=true;clearTimeout(heroState.timer)});
+ root.addEventListener('focusout',event=>{if(!root.contains(event.relatedTarget)){heroState.focused=false;heroSchedule()}});
+ root.addEventListener('keydown',event=>{const direction={ArrowLeft:-1,ArrowRight:1,Home:-heroState.target,End:heroSlides.length-1-heroState.target}[event.key];if(direction===undefined)return;event.preventDefault();heroGo(direction)});
+ let start=null;
+ root.addEventListener('touchstart',event=>{const t=event.touches[0];start=t?{x:t.clientX,y:t.clientY}:null},{passive:true});
+ root.addEventListener('touchend',event=>{if(!start)return;const t=event.changedTouches[0];if(t){const dx=t.clientX-start.x,dy=t.clientY-start.y;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.2)heroGo(dx<0?1:-1)}start=null},{passive:true});
+ setTimeout(()=>{if(root.isConnected)heroLoad(1).catch(()=>{})},1200);
+ heroSchedule();
+}
+heroMotion.addEventListener('change',heroSchedule);
+document.addEventListener('visibilitychange',heroSchedule);
 function setupNext(){
+ setupHeroSlider();
  for(const rail of document.querySelectorAll('#products-rail,#works-rail')){
   railState(rail);rail.addEventListener('scroll',()=>railState(rail),{passive:true});
   rail.addEventListener('keydown',e=>{if(e.target===rail&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();if(e.key==='Home'||e.key==='End')rail.scrollTo({left:e.key==='Home'?0:rail.scrollWidth,behavior:'instant'});else stepRail(rail,e.key==='ArrowLeft'?-1:1)}});
@@ -349,6 +442,7 @@ function setupNext(){
  frame?.addEventListener('load',()=>{clearTimeout(timer);status.textContent='Яндекс-карта · интерактивная внешняя карта'});
 }
 window.addEventListener('resize',()=>document.querySelectorAll('#products-rail,#works-rail').forEach(railState));
+window.addEventListener('resize',()=>{const mobile=matchMedia('(max-width:767px)').matches;if(heroState.root?.isConnected&&mobile!==heroState.mobile){heroState.mobile=mobile;heroLoad(heroState.index).catch(()=>{});heroLoad((heroState.index+1)%heroSlides.length).catch(()=>{})}});
 let controlsReturn=null;
 function closeControls(){ $('#prototype-controls').hidden=true;$('#controls-toggle').setAttribute('aria-expanded','false');unlockBackground();if(controlsReturn?.isConnected)controlsReturn.focus({preventScroll:true}) }
 $('#controls-toggle').addEventListener('click',()=>{controlsReturn=document.activeElement;$('#prototype-controls').hidden=false;$('#controls-toggle').setAttribute('aria-expanded','true');lockBackground();$('#controls-close').focus()});
