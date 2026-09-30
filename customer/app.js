@@ -63,12 +63,16 @@
   const state = {route:'home',id:1,scenario:'normal',theme:localStorage.getItem('kolesovik.customer-prototype.theme') || 'light',controls:false,overlay:null,chat:false,chatScenario:'history',draft:'',chatMessages:[],chatNotice:'',chatSendState:'idle',bookingStep:-1,bookingMonth:9,bookingDate:'',bookingService:'',bookingTime:'',bookingCar:0,bookingMode:'create',bookingTargetId:null,bookingResult:null,bookings:[{id:1,isoDate:'2026-10-03',date:'3 октября 2026',time:'10:30',service:'Плановое ТО',carId:1,branch:'КОЛЕСОВИК · Центр',status:'Подтверждена'}],bookingNotice:'',loginStep:'phone',phone:'',otp:'',resend:38,origin:'history',historyCar:'all',secondaryId:1,contextCarId:null};
   const app = $('#app');
   const overlayRoot = $('#overlay-root');
+  const controlsRoot = document.createElement('div');
+  controlsRoot.id = 'controls-root';
+  document.body.append(controlsRoot);
   const live = $('#live');
   let focusReturn = null;
   let chatFocusReturn = null;
-  let chatScrollTop = 0;
-  let chatBaselineHeight = 0;
-  let chatInputHasBeenFocused = false;
+  let chatShell = null;
+  let chatInput = null;
+  let chatSessionId = 0;
+  let chatSendTimer = null;
   let lastRoute = '';
   const scrollByRoute = new Map();
   const announce = message => {live.textContent=''; setTimeout(()=>live.textContent=message,10)};
@@ -175,58 +179,153 @@
   function store(){return shell(`<button class="back-link" data-route="more">${icon('back')} Ещё</button>${head('Будущий этап','Магазин','Дизайн-концепция')}${stateBox('Следующий отдельный этап','Каталог и оформление заказа здесь не реализованы. После принятия Customer Core возможен Customer Store Prototype на общем catalog domain Next.','info')}`,true)}
   function login(){const stage=['phone','otp'].includes(state.scenario)?state.scenario:state.loginStep;const errorMap={'wrong-code':'Неверный код. Проверьте SMS.','expired':'Код истёк. Получите новый код.','attempt-limit':'Лимит попыток исчерпан. Подождите перед новым запросом.','sms-unavailable':'Вход по SMS временно недоступен.','rate-limit':'Слишком много запросов. Подождите и повторите.'};let err=errorMap[state.scenario];let form=stage==='otp'?`<form id="otp-form" class="form-stack"><label class="field">Код из SMS<input id="otp" class="otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" value="${esc(state.otp)}" aria-label="Шестизначный код из SMS"></label><button class="button primary block" type="submit">${state.scenario==='loading'?'Проверяем…':'Войти'}</button><button class="link-button" type="button" data-action="resend" ${state.resend>0?'disabled':''}>Отправить код снова${state.resend>0?` через ${state.resend} с`:''}</button><button class="link-button" type="button" data-action="login-back">Изменить номер</button></form>`:`<form id="phone-form" class="form-stack"><label class="field">Номер телефона<div class="phone-input"><span>+7</span><input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="(999) 000-00-00" maxlength="15" value="${esc(state.phone)}" aria-label="Номер телефона без кода страны"></div><small>Отправим код подтверждения по SMS.</small></label><button class="button primary block" type="submit">${state.scenario==='loading'?'Отправляем…':'Получить код'}</button></form>`;return `<div class="login-shell"><div class="login-branding"><div class="brand" style="padding:0"><span class="brand-mark">К</span>КОЛЕСОВИК</div><div><div class="accent-rule"></div><h1>Всё о вашем автомобиле — в одном месте.</h1><p>Записи, история обслуживания, документы и связь с сервисом.</p></div><footer>ДИЗАЙН-ПРОТОТИП / вымышленные данные</footer></div><main class="login-content"><div class="login-panel"><div class="eyebrow">Личный кабинет</div><h2 id="main-title" tabindex="-1">${stage==='otp'?'Введите код':'Вход по телефону'}</h2><p>${stage==='otp'?'Код отправлен на номер +7 '+(state.phone||'(999) 123-45-67'):'Войдите, чтобы продолжить работу с автомобилями.'}</p>${err?`<div class="inline-state danger login-error" role="alert"><strong>${err}</strong></div>`:''}${state.scenario==='success'?stateBox('Вход подтверждён','В прототипе откройте кабинет кнопкой ниже.','success'):form}${state.scenario==='success'?button('Перейти в кабинет','login-finish','primary block'):''}<p class="login-foot">Все действия в этом экране локальны. SMS не отправляется.</p></div></main></div>`}
   function render(){applyTheme();let route=state.route;app.innerHTML=({home,garage,car,history,order,bookings,more,recommendations:secondary,warranty:secondary,storage:secondary,payments:secondary,documents:secondary,store,login})[route]();renderOverlays();lastRoute=route}
-  function openControls(){focusReturn=document.activeElement;state.controls=true;renderOverlays();$('.controls-panel select')?.focus()}
-  function closeControls(){state.controls=false;renderOverlays();(state.chat?$('.drawer [data-action="open-controls"]'):focusReturn)?.focus()}
+  function openControls(){
+    if(state.controls)return;
+    focusReturn=document.activeElement;
+    state.controls=true;
+    controlsRoot.innerHTML=renderControls();
+    $('.controls-panel select',controlsRoot)?.focus();
+  }
+  function closeControls(){
+    if(!state.controls)return;
+    state.controls=false;
+    controlsRoot.replaceChildren();
+    const fallback=state.chat?chatShell?.querySelector('[data-action="open-controls"]'):$('#controls-open');
+    (focusReturn?.isConnected?focusReturn:fallback)?.focus({preventScroll:true});
+    focusReturn=null;
+  }
   function chatMessages(){let s=state.chatScenario;let messages=[{type:'customer',text:'Здравствуйте! Хотела уточнить по обслуживанию Camry.',time:'10:16'},{type:'system',text:'Разговор передан администратору',time:'10:16'},{type:'admin',text:'Здравствуйте, Мария. Подскажите, что вас интересует?',time:'10:19'}];if(s==='new')messages=[];if(s==='customer-admin')messages=messages.filter((_,i)=>i!==1);if(s==='handoff')messages=messages.slice(0,2);if(s==='booking-event'||s==='history'||s==='closed'||s==='continue')messages.push({type:'event',text:'Запись подтверждена · 3 октября, 10:30 · Toyota Camry · Плановое ТО',time:'10:20'});if(s==='closed'||s==='continue')messages.push({type:'system',text:'Разговор завершён. Вы можете написать снова.',time:'11:04'});messages.push(...state.chatMessages);return messages}
+  function chatMessageHtml(m){
+    if(m.type==='system')return `<div class="chat-system" role="note"><span>${icon('spark')}</span>${esc(m.text)}</div>`;
+    if(m.type==='event')return `<div class="chat-booking-event"><div class="chat-event-kicker">${icon('calendar')} Событие записи</div><strong>Запись подтверждена</strong><p>${esc(m.text.replace(/^Запись подтверждена · /,''))}</p><button class="link-button" data-action="chat-booking">Посмотреть запись ${icon('arrow')}</button></div>`;
+    return `<div class="chat-message ${m.type==='customer'?'mine':''}"><div class="chat-author">${m.type==='customer'?'Вы':'Администратор'} <time>${esc(m.time)}</time></div><div class="chat-bubble">${esc(m.text)}</div></div>`;
+  }
+  function chatHistoryHtml(){
+    const messages=chatMessages();
+    return `<div class="chat-date">Сегодня</div>${messages.length?messages.map(chatMessageHtml).join(''):`<div class="chat-empty"><span class="empty-illustration">${icon('chat')}</span><h2>Напишите сервису</h2><p>Ваш разговор начнётся здесь. Ответ администратора появится в диалоге.</p></div>`}`;
+  }
   function renderChat(){
-    const messages=chatMessages(),s=state.chatScenario,closed=s==='closed';
-    const warning=state.chatSendState==='error'?`<div class="chat-feedback danger" role="alert"><strong>Не удалось отправить</strong><span>Текст сохранён. Проверьте соединение и повторите попытку.</span></div>`:state.chatSendState==='unknown'?`<div class="chat-feedback warning" role="status"><strong>Результат отправки неизвестен</strong><span>Проверьте историю перед повтором.</span><button data-action="chat-reconcile" type="button">Проверил историю</button></div>`:'';
-    const messagesHtml=messages.length?messages.map(m=>{
-      if(m.type==='system')return `<div class="chat-system" role="note"><span>${icon('spark')}</span>${esc(m.text)}</div>`;
-      if(m.type==='event')return `<div class="chat-booking-event"><div class="chat-event-kicker">${icon('calendar')} Событие записи</div><strong>Запись подтверждена</strong><p>${esc(m.text.replace(/^Запись подтверждена · /,''))}</p><button class="link-button" data-action="chat-booking">Посмотреть запись ${icon('arrow')}</button></div>`;
-      return `<div class="chat-message ${m.type==='customer'?'mine':''}"><div class="chat-author">${m.type==='customer'?'Вы':'Администратор'} <time>${m.time}</time></div><div class="chat-bubble">${esc(m.text)}</div></div>`;
-    }).join(''):`<div class="chat-empty"><span class="empty-illustration">${icon('chat')}</span><h2>Напишите сервису</h2><p>Ваш разговор начнётся здесь. Ответ администратора появится в диалоге.</p></div>`;
-    const composer=closed?`<div class="chat-closed"><strong>Разговор завершён</strong><p>История доступна. Вы можете начать общение снова с этим филиалом.</p>${button('Продолжить общение','chat-continue','primary')}</div>`:`<form id="chat-form" class="chat-composer">${warning}${state.chatNotice?`<div class="chat-placeholder-note" role="status">${esc(state.chatNotice)}</div>`:''}<div class="composer-row"><button class="chat-tool" type="button" data-action="chat-attachment" aria-label="Вложения — будущая функция" title="FUTURE DESIGN PLACEHOLDER · Вложения">${icon('attach')}</button><textarea id="chat-input" rows="1" placeholder="Сообщение сервису" aria-label="Сообщение сервису" maxlength="1000" ${state.chatSendState==='sending'?'disabled':''}>${esc(state.draft)}</textarea>${state.draft.trim()?`<button class="chat-send" type="submit" aria-label="Отправить сообщение" ${state.chatSendState==='sending'||state.chatSendState==='unknown'?'disabled':''}>${icon('send')}</button>`:`<button class="chat-tool" type="button" data-action="chat-dictation" aria-label="Диктовка — будущая функция" title="FUTURE DESIGN PLACEHOLDER · Диктовка">${icon('mic')}</button>`}</div><div class="composer-note">${state.chatSendState==='sending'?'Отправляется…':'Вложения и диктовка · FUTURE DESIGN PLACEHOLDER'}</div></form>`;
-    return `<div class="overlay chat-overlay" data-overlay="chat"><section class="drawer" role="dialog" aria-modal="true" aria-labelledby="chat-title"><header class="chat-header"><span class="chat-brand">К</span><div class="chat-header-title"><strong id="chat-title">Написать сервису</strong><small>КОЛЕСОВИК · Центр</small></div><div class="chat-header-actions"><button class="icon-button" data-action="open-controls" aria-label="Сценарии прототипа">⚙</button><button class="icon-button" data-action="close-chat" aria-label="Закрыть диалог">${icon('x')}</button></div></header><div class="chat-context"><span class="chat-presence"><i></i>${closed?'История разговора':'На связи с сервисом'}</span><span>Текущий филиал</span></div><div class="chat-history" id="chat-history" role="log" aria-label="История сообщений" tabindex="0"><div class="chat-date">Сегодня</div>${messagesHtml}</div>${composer}</section></div>`;
+    return `<div class="overlay chat-overlay" data-overlay="chat"><section class="drawer" role="dialog" aria-modal="true" aria-labelledby="chat-title"><header class="chat-header"><span class="chat-brand">К</span><div class="chat-header-title"><strong id="chat-title">Написать сервису</strong><small>КОЛЕСОВИК · Центр</small></div><div class="chat-header-actions"><button class="icon-button" data-action="open-controls" aria-label="Сценарии прототипа">⚙</button><button class="icon-button" data-action="close-chat" aria-label="Закрыть диалог">${icon('x')}</button></div></header><div class="chat-context"><span class="chat-presence"><i></i><span id="chat-presence-text">На связи с сервисом</span></span><span>Текущий филиал</span></div><div class="chat-history" id="chat-history" role="log" aria-label="История сообщений" tabindex="0">${chatHistoryHtml()}</div><form id="chat-form" class="chat-composer"><div class="chat-feedback" id="chat-feedback" hidden></div><div class="chat-placeholder-note" id="chat-notice" role="status" hidden></div><div class="composer-row"><button class="chat-tool" type="button" data-action="chat-attachment" aria-label="Вложения — будущая функция" title="FUTURE DESIGN PLACEHOLDER · Вложения">${icon('attach')}</button><textarea id="chat-input" rows="1" placeholder="Сообщение сервису" aria-label="Сообщение сервису" maxlength="1000">${esc(state.draft)}</textarea><button class="chat-send" type="submit" aria-label="Отправить сообщение">${icon('send')}</button><button class="chat-tool" type="button" data-action="chat-dictation" aria-label="Диктовка — будущая функция" title="FUTURE DESIGN PLACEHOLDER · Диктовка">${icon('mic')}</button></div><div class="composer-note" id="chat-composer-note">Вложения и диктовка · FUTURE DESIGN PLACEHOLDER</div></form><div class="chat-closed" hidden><strong>Разговор завершён</strong><p>История доступна. Вы можете начать общение снова с этим филиалом.</p>${button('Продолжить общение','chat-continue','primary')}</div></section></div>`;
+  }
+  function resizeChatInput(){
+    if(!chatInput)return;
+    chatInput.style.height='auto';
+    chatInput.style.height=Math.min(chatInput.scrollHeight,108)+'px';
+    chatInput.style.overflowY=chatInput.scrollHeight>108?'auto':'hidden';
+  }
+  function syncChatView(){
+    if(!chatShell)return;
+    const closed=state.chatScenario==='closed';
+    chatShell.querySelector('#chat-presence-text').textContent=closed?'История разговора':'На связи с сервисом';
+    chatShell.querySelector('#chat-form').hidden=closed;
+    chatShell.querySelector('.chat-closed').hidden=!closed;
+    const hasDraft=Boolean(state.draft.trim());
+    const send=chatShell.querySelector('.chat-send');
+    const mic=chatShell.querySelector('[data-action="chat-dictation"]');
+    send.hidden=!hasDraft;
+    send.disabled=state.chatSendState==='sending'||state.chatSendState==='unknown';
+    mic.hidden=hasDraft;
+    mic.disabled=state.chatSendState==='sending';
+    chatShell.querySelector('#chat-composer-note').textContent=state.chatSendState==='sending'?'Отправляется…':'Вложения и диктовка · FUTURE DESIGN PLACEHOLDER';
+    const feedback=chatShell.querySelector('#chat-feedback');
+    feedback.hidden=!['error','unknown'].includes(state.chatSendState);
+    if(state.chatSendState==='error'){
+      feedback.className='chat-feedback danger';feedback.setAttribute('role','alert');
+      feedback.innerHTML='<strong>Не удалось отправить</strong><span>Текст сохранён. Проверьте соединение и повторите попытку.</span>';
+    }else if(state.chatSendState==='unknown'){
+      feedback.className='chat-feedback warning';feedback.setAttribute('role','status');
+      feedback.innerHTML='<strong>Результат отправки неизвестен</strong><span>Проверьте историю перед повтором.</span><button data-action="chat-reconcile" type="button">Проверил историю</button>';
+    }else{feedback.replaceChildren();feedback.removeAttribute('role')}
+    const notice=chatShell.querySelector('#chat-notice');
+    notice.hidden=!state.chatNotice;
+    notice.textContent=state.chatNotice;
+    resizeChatInput();
+  }
+  function refreshChatHistory(){
+    if(!chatShell)return;
+    const history=chatShell.querySelector('#chat-history');
+    const atBottom=history.scrollHeight-history.scrollTop-history.clientHeight<80;
+    history.innerHTML=chatHistoryHtml();
+    if(atBottom)history.scrollTop=history.scrollHeight;
+  }
+  function appendChatMessage(message){
+    const history=chatShell?.querySelector('#chat-history');
+    if(!history)return;
+    const atBottom=history.scrollHeight-history.scrollTop-history.clientHeight<80;
+    history.querySelector('.chat-empty')?.remove();
+    history.insertAdjacentHTML('beforeend',chatMessageHtml(message));
+    if(atBottom)history.scrollTop=history.scrollHeight;
   }
   function renderControls(){let routes=Object.keys(routeNames).filter(x=>x!=='car'&&x!=='order');return `<div class="controls" data-overlay="controls"><section class="controls-panel" role="dialog" aria-modal="true" aria-labelledby="controls-title"><header><h2 id="controls-title">Prototype Controls</h2><button class="icon-button" data-action="close-controls" aria-label="Закрыть Prototype Controls">${icon('x')}</button></header><p>Локальные сценарии. Данные и действия вымышлены.</p><label class="field">Экран<select id="control-route">${routes.map(r=>`<option value="${r}" ${state.route===r?'selected':''}>${routeNames[r]}</option>`).join('')}<option value="car" ${state.route==='car'?'selected':''}>Карточка автомобиля</option><option value="order" ${state.route==='order'?'selected':''}>Полный акт</option><option value="ask" ${state.chat?'selected':''}>Написать сервису</option></select></label><label class="field">Состояние<select id="control-scenario">${(scenarioOptions[state.chat?'ask':state.route]||['normal']).map(s=>`<option value="${s}" ${(state.chat?state.chatScenario:state.scenario)===s?'selected':''}>${scenarioNames[s]||s}</option>`).join('')}</select></label><label class="field">Тема<select id="control-theme"><option value="light" ${state.theme==='light'?'selected':''}>Светлая</option><option value="dark" ${state.theme==='dark'?'selected':''}>Тёмная</option><option value="system" ${state.theme==='system'?'selected':''}>Системная</option></select></label><footer>${button('Скрыть controls','close-controls')}</footer></section></div>`}
   function renderDialog(){if(!state.overlay)return '';let type=state.overlay.type;let b=state.bookings.find(x=>x.id===state.overlay.id)||state.bookings[0];let title=type==='cancel'?'Отменить запись?':type==='pdf'?'Документ в прототипе':type==='logout'?'Выйти из кабинета?':'Подтверждение';let body=type==='cancel'?`<p> ${b?.date} · ${b?.time}<br><strong>${b?.service}</strong><br>${b?.branch}</p><p class="muted" style="margin-top:13px">После отмены запись исчезнет из списка будущих визитов.</p>`:type==='pdf'?`<p>В этом локальном дизайн-прототипе PDF не загружается.</p>`:type==='logout'?`<p>Вы вернётесь на демонстрационный экран входа.</p>`:'<p>Действие локально для прототипа.</p>';let act=type==='cancel'?button('Отменить запись','confirm-cancel','danger'):type==='logout'?button('Выйти','confirm-logout','primary'):'';return `<div class="overlay" data-overlay="dialog"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><header><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Закрыть окно">${icon('x')}</button></header><div class="dialog-body">${body}</div><footer class="dialog-footer">${button(type==='pdf'?'Понятно':'Оставить','close-dialog')}${act}</footer></section></div>`}
-  function syncChatKeyboardViewport(){
-    if(!state.chat)return;
-    const height=window.visualViewport?.height;
-    if(chatInputHasBeenFocused&&height&&chatBaselineHeight-height>120){
-      overlayRoot.style.setProperty('--chat-visible-height',`${Math.round(height)}px`);
-    }else{
-      overlayRoot.style.removeProperty('--chat-visible-height');
-      if(document.activeElement?.id!=='chat-input')chatInputHasBeenFocused=false;
+  function renderOverlays(){
+    if(state.chat){
+      if(!chatShell){
+        overlayRoot.innerHTML=renderChat();
+        chatShell=overlayRoot.querySelector('.chat-overlay');
+        chatInput=chatShell.querySelector('#chat-input');
+        const history=chatShell.querySelector('#chat-history');
+        history.scrollTop=history.scrollHeight;
+      }
+      syncChatView();
+      return;
     }
+    overlayRoot.innerHTML=renderDialog();
   }
-  function renderOverlays(){overlayRoot.innerHTML=state.controls?renderControls():state.chat?renderChat():renderDialog();if(state.chat){syncChatKeyboardViewport();let h=$('#chat-history');if(h)h.scrollTop=h.scrollHeight}}
   function openChat(scenario){
-    chatFocusReturn=document.activeElement;chatScrollTop=window.scrollY;
-    chatBaselineHeight=window.visualViewport?.height||window.innerHeight;chatInputHasBeenFocused=false;
-    overlayRoot.style.removeProperty('--chat-visible-height');
+    if(state.chat){
+      if(scenario){state.chatScenario=scenario;refreshChatHistory();syncChatView()}
+      return;
+    }
+    clearTimeout(chatSendTimer);
+    chatSendTimer=null;
+    chatSessionId++;
+    chatFocusReturn=document.activeElement;
     state.chat=true;state.chatScenario=scenario||'history';state.chatSendState='idle';state.chatNotice='';
-    document.body.style.position='fixed';document.body.style.top=`-${chatScrollTop}px`;
-    document.body.style.width='100%';document.body.style.overflow='hidden';
-    renderOverlays();$('.drawer [data-action="close-chat"]')?.focus();
+    document.documentElement.classList.add('chat-open');
+    document.body.classList.add('chat-open');
+    app.inert=true;
+    $('#prototype-bar').inert=true;
+    renderOverlays();
+    chatShell.querySelector('[data-action="close-chat"]').focus({preventScroll:true});
   }
   function closeChat(){
+    if(!state.chat)return;
     const returnTo=chatFocusReturn;
-    state.chat=false;state.chatSendState='idle';chatInputHasBeenFocused=false;chatBaselineHeight=0;
-    overlayRoot.style.removeProperty('--chat-visible-height');
-    document.body.style.position='';document.body.style.top='';document.body.style.width='';document.body.style.overflow='';
-    renderOverlays();
-    const previousScrollBehavior=document.documentElement.style.scrollBehavior;
-    document.documentElement.style.scrollBehavior='auto';window.scrollTo(0,chatScrollTop);
-    document.documentElement.style.scrollBehavior=previousScrollBehavior;
+    chatSessionId++;
+    clearTimeout(chatSendTimer);
+    chatSendTimer=null;
+    state.chat=false;state.chatSendState='idle';
+    state.controls=false;
+    controlsRoot.replaceChildren();
+    chatShell?.remove();chatShell=null;chatInput=null;
+    document.documentElement.classList.remove('chat-open');
+    document.body.classList.remove('chat-open');
+    app.inert=false;
+    $('#prototype-bar').inert=false;
     const fallback=[...document.querySelectorAll('[data-action="open-chat"]')].find(x=>x.getClientRects().length);
     (returnTo?.isConnected?returnTo:fallback)?.focus({preventScroll:true});
-    chatFocusReturn=null;
+    chatFocusReturn=null;focusReturn=null;
   }
   function openDialog(type,id){focusReturn=document.activeElement;state.overlay={type,id};renderOverlays();$('.dialog .icon-button')?.focus();document.body.style.overflow='hidden'}
   function closeDialog(){state.overlay=null;document.body.style.overflow='';renderOverlays();focusReturn?.focus()}
-  function setScenario(s){if(state.chat){state.chatScenario=s;state.chatSendState=s==='sending'?'sending':s==='error'?'error':s==='unknown-outcome'?'unknown':'idle';state.chatNotice='';renderOverlays()}else{const previous=state.scenario;state.scenario=s;if(state.route==='login'&&['phone','otp'].includes(s))state.loginStep=s;if(state.route==='car'&&s==='archived'){state.id=3;window.history.replaceState(null,'','#/cars/3')}else if(state.route==='car'&&previous==='archived'){state.id=1;window.history.replaceState(null,'','#/cars/1')}if(state.route==='bookings')state.bookingNotice=s==='success'?'Запись подтверждена':'';render()}announce(`Сценарий: ${scenarioNames[s]||s}`)}
+  function setScenario(s){
+    if(state.chat){
+      clearTimeout(chatSendTimer);chatSendTimer=null;
+      state.chatScenario=s;
+      state.chatSendState=s==='sending'?'sending':s==='error'?'error':s==='unknown-outcome'?'unknown':'idle';
+      state.chatNotice='';
+      refreshChatHistory();syncChatView();
+    }else{
+      const previous=state.scenario;state.scenario=s;
+      if(state.route==='login'&&['phone','otp'].includes(s))state.loginStep=s;
+      if(state.route==='car'&&s==='archived'){state.id=3;window.history.replaceState(null,'','#/cars/3')}
+      else if(state.route==='car'&&previous==='archived'){state.id=1;window.history.replaceState(null,'','#/cars/1')}
+      if(state.route==='bookings')state.bookingNotice=s==='success'?'Запись подтверждена':'';
+      render();
+    }
+    announce(`Сценарий: ${scenarioNames[s]||s}`);
+  }
   function startNewBooking(){
     if(state.route!=='bookings')navigate('bookings');
     state.bookingMode='create';state.bookingStep=0;state.bookingMonth=9;
@@ -287,21 +386,72 @@
       case 'secondary-detail':if(state.route==='recommendations'){state.origin='history';navigate('order',2418)}else{state.secondaryId=2;render()}break;
       case 'secondary-back':state.secondaryId=1;render();break;case 'secondary-order':state.origin='history';navigate('order',2418);break;
       case 'chat-booking':closeChat();navigate('bookings');break;
-      case 'chat-continue':state.chatScenario='continue';state.chatSendState='idle';renderOverlays();$('.drawer [data-action="close-chat"]')?.focus();break;
-      case 'chat-attachment':state.chatNotice='Вложения — FUTURE DESIGN PLACEHOLDER. Отправка файлов в прототипе недоступна.';renderOverlays();$('[data-action="chat-attachment"]')?.focus();break;
-      case 'chat-dictation':state.chatNotice='Диктовка — FUTURE DESIGN PLACEHOLDER. Запись звука в прототипе недоступна.';renderOverlays();$('[data-action="chat-dictation"]')?.focus();break;
-      case 'chat-reconcile':state.chatSendState='idle';state.chatNotice='Проверьте историю перед повторной отправкой сообщения.';renderOverlays();break;
+      case 'chat-continue':state.chatScenario='continue';state.chatSendState='idle';refreshChatHistory();syncChatView();chatShell?.querySelector('[data-action="close-chat"]')?.focus({preventScroll:true});break;
+      case 'chat-attachment':state.chatNotice='Вложения — FUTURE DESIGN PLACEHOLDER. Отправка файлов в прототипе недоступна.';syncChatView();break;
+      case 'chat-dictation':state.chatNotice='Диктовка — FUTURE DESIGN PLACEHOLDER. Запись звука в прототипе недоступна.';syncChatView();break;
+      case 'chat-reconcile':state.chatSendState='idle';state.chatNotice='Проверьте историю перед повторной отправкой сообщения.';syncChatView();break;
     }
   }
   );
   $('#controls-open').addEventListener('click',openControls);
-  document.addEventListener('change',e=>{if(e.target.id==='control-route'){let v=e.target.value;closeControls();if(v==='ask')openChat('new');else navigate(v,v==='order'?2418:1);openControls()}if(e.target.id==='control-scenario')setScenario(e.target.value);if(e.target.id==='control-theme')setTheme(e.target.value);if(e.target.id==='history-car'){state.historyCar=e.target.value;render()}if(e.target.id==='booking-date')state.bookingDate=e.target.value});
-  document.addEventListener('input',e=>{if(e.target.id==='chat-input'){state.draft=e.target.value;e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,108)+'px';const existing=$('.composer-row button:last-child');if(existing){const hasDraft=Boolean(state.draft.trim());existing.outerHTML=hasDraft?`<button class="chat-send" type="submit" aria-label="Отправить сообщение" ${state.chatSendState==='unknown'?'disabled':''}>${icon('send')}</button>`:`<button class="chat-tool" type="button" data-action="chat-dictation" aria-label="Диктовка — будущая функция" title="FUTURE DESIGN PLACEHOLDER · Диктовка">${icon('mic')}</button>`}}if(e.target.id==='phone'){let d=e.target.value.replace(/\D/g,'').replace(/^7/,'').slice(0,10);let v='';if(d.length)v='('+d.slice(0,3)+(d.length>=3?') ':'');if(d.length>3)v+=d.slice(3,6);if(d.length>6)v+='-'+d.slice(6,8);if(d.length>8)v+='-'+d.slice(8,10);e.target.value=v;state.phone=v}if(e.target.id==='otp'){e.target.value=e.target.value.replace(/\D/g,'').slice(0,6);state.otp=e.target.value}});
-  document.addEventListener('submit',e=>{if(e.target.id==='chat-form'){e.preventDefault();let value=$('#chat-input')?.value.trim();if(!value||state.chatSendState==='unknown')return;state.draft=value;state.chatSendState='sending';state.chatNotice='';renderOverlays();setTimeout(()=>{if(!state.chat)return;state.chatMessages.push({type:'customer',text:value,time:'сейчас'});state.draft='';state.chatSendState='idle';state.chatScenario='continue';renderOverlays();$('#chat-input')?.focus();announce('Сообщение добавлено в локальный диалог')},650)}if(e.target.id==='phone-form'){e.preventDefault();if(state.phone.replace(/\D/g,'').length!==10){announce('Укажите 10 цифр номера');$('#phone')?.focus();return}state.loginStep='otp';state.scenario='otp';render();$('#otp')?.focus()}if(e.target.id==='otp-form'){e.preventDefault();if(state.otp.length!==6){announce('Введите шестизначный код');return}state.scenario='success';render()}});
-  document.addEventListener('focusin',e=>{if(state.chat&&e.target.id==='chat-input'){chatInputHasBeenFocused=true;syncChatKeyboardViewport()}});
-  document.addEventListener('focusout',e=>{if(state.chat&&e.target.id==='chat-input')requestAnimationFrame(syncChatKeyboardViewport)});
-  window.visualViewport?.addEventListener('resize',syncChatKeyboardViewport);
-  window.addEventListener('resize',syncChatKeyboardViewport);
+  document.addEventListener('change',e=>{
+    if(e.target.id==='control-route'){
+      const route=e.target.value;
+      closeControls();
+      if(route==='ask'){
+        if(state.chat){state.chatScenario='new';state.chatSendState='idle';refreshChatHistory();syncChatView()}
+        else openChat('new');
+      }else navigate(route,route==='order'?2418:1);
+      openControls();
+    }
+    if(e.target.id==='control-scenario')setScenario(e.target.value);
+    if(e.target.id==='control-theme')setTheme(e.target.value);
+    if(e.target.id==='history-car'){state.historyCar=e.target.value;render()}
+    if(e.target.id==='booking-date')state.bookingDate=e.target.value;
+  });
+  document.addEventListener('input',e=>{
+    if(e.target===chatInput){state.draft=chatInput.value;syncChatView()}
+    if(e.target.id==='phone'){
+      let d=e.target.value.replace(/\D/g,'').replace(/^7/,'').slice(0,10),v='';
+      if(d.length)v='('+d.slice(0,3)+(d.length>=3?') ':'');
+      if(d.length>3)v+=d.slice(3,6);
+      if(d.length>6)v+='-'+d.slice(6,8);
+      if(d.length>8)v+='-'+d.slice(8,10);
+      e.target.value=v;state.phone=v;
+    }
+    if(e.target.id==='otp'){e.target.value=e.target.value.replace(/\D/g,'').slice(0,6);state.otp=e.target.value}
+  });
+  document.addEventListener('submit',e=>{
+    if(e.target.id==='chat-form'){
+      e.preventDefault();
+      const value=chatInput?.value.trim();
+      if(!value||state.chatSendState==='sending'||state.chatSendState==='unknown')return;
+      state.chatSendState='sending';state.chatNotice='';syncChatView();
+      const session=chatSessionId;
+      clearTimeout(chatSendTimer);
+      chatSendTimer=setTimeout(()=>{
+        chatSendTimer=null;
+        if(!state.chat||session!==chatSessionId)return;
+        const message={type:'customer',text:value,time:'сейчас'};
+        state.chatMessages.push(message);
+        appendChatMessage(message);
+        if(chatInput.value.trim()===value){chatInput.value='';state.draft=''}
+        else state.draft=chatInput.value;
+        state.chatSendState='idle';syncChatView();
+        announce('Сообщение добавлено в локальный диалог');
+      },650);
+    }
+    if(e.target.id==='phone-form'){
+      e.preventDefault();
+      if(state.phone.replace(/\D/g,'').length!==10){announce('Укажите 10 цифр номера');$('#phone')?.focus();return}
+      state.loginStep='otp';state.scenario='otp';render();$('#otp')?.focus();
+    }
+    if(e.target.id==='otp-form'){
+      e.preventDefault();
+      if(state.otp.length!==6){announce('Введите шестизначный код');return}
+      state.scenario='success';render();
+    }
+  });
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(state.controls){closeControls();return}if(state.chat){closeChat();return}if(state.overlay){closeDialog();return}}if(e.key!=='Tab')return;let container=state.controls?$('.controls-panel'):state.chat?$('.drawer'):state.overlay?$('.dialog'):null;if(!container)return;let nodes=[...container.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!nodes.length)return;let first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});
   window.addEventListener('hashchange',()=>{let [route,id]=parsePath();if(route!==state.route||id!==state.id){state.route=route;state.id=id;state.scenario=route==='garage'?'many':route==='login'?'phone':'normal';render();scrollTo(0,0)}});
   const [initialRoute,initialId]=parsePath();state.route=initialRoute;state.id=initialId;state.scenario=initialRoute==='garage'?'many':initialRoute==='login'?'phone':'normal';render();
