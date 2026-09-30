@@ -71,8 +71,13 @@
   let chatFocusReturn = null;
   let chatShell = null;
   let chatInput = null;
-  let chatSessionId = 0;
-  let chatSendTimer = null;
+  let chatListeners = null;
+  let chatBackgroundAria = null;
+  const chatDiagnostics = {chatOpenCount:0,chatCloseCount:0,chatSendCount:0,chatDestroyCount:0,lastLifecycleEvent:'init',pendingChatTimers:0};
+  if(new URLSearchParams(location.search).has('chatQa')){
+    chatDiagnostics.snapshot=()=>({chat:state.chat,chatSendState:state.chatSendState,listenerActive:Boolean(chatListeners),shellCount:document.querySelectorAll('.chat-overlay').length});
+    window.__customerChatDiagnostics=chatDiagnostics;
+  }
   let lastRoute = '';
   const scrollByRoute = new Map();
   const announce = message => {live.textContent=''; setTimeout(()=>live.textContent=message,10)};
@@ -83,12 +88,14 @@
   function setTheme(theme){state.theme=theme;localStorage.setItem('kolesovik.customer-prototype.theme',theme);applyTheme();render();announce(`Тема: ${theme==='light'?'Светлая':theme==='dark'?'Тёмная':'Системная'}`)}
   const pathFor = (route,id) => ({home:'/',garage:'/cars',car:`/cars/${id||1}`,history:'/orders',order:`/orders/${id||2418}`,bookings:'/bookings',more:'/more',recommendations:'/recommendations',warranty:'/warranty',storage:'/storage',payments:'/payments',documents:'/documents',store:'/store',login:'/login'})[route] || '/';
   function parsePath(){let path=decodeURIComponent(location.hash.replace(/^#/,'')||'/');if(path==='/')return ['home',1];if(/^\/cars\/\d+$/.test(path))return ['car',Number(path.split('/')[2])];if(/^\/orders\/\d+$/.test(path))return ['order',Number(path.split('/')[2])];return Object.entries({garage:'/cars',history:'/orders',bookings:'/bookings',more:'/more',recommendations:'/recommendations',warranty:'/warranty',storage:'/storage',payments:'/payments',documents:'/documents',store:'/store',login:'/login'}).find(([,p])=>p===path)?.[0] ? [Object.entries({garage:'/cars',history:'/orders',bookings:'/bookings',more:'/more',recommendations:'/recommendations',warranty:'/warranty',storage:'/storage',payments:'/payments',documents:'/documents',store:'/store',login:'/login'}).find(([,p])=>p===path)[0],1] : ['home',1]}
-  function navigate(route,id,scenario){if(state.chat)closeChat();scrollByRoute.set(state.route,scrollY);state.route=route;state.id=id||1;state.scenario=scenario||({garage:'many',login:'phone'}[route]||'normal');state.bookingStep=-1;state.bookingNotice='';location.hash=pathFor(route,id);render();requestAnimationFrame(()=>{scrollTo(0,scrollByRoute.get(route)||0);$('#main-title')?.focus()})}
+  function contentScroll(){return matchMedia('(max-width:899px)').matches&&state.route!=='login'?($('#main')?.scrollTop||0):scrollY}
+  function restoreContentScroll(value){if(matchMedia('(max-width:899px)').matches&&state.route!=='login'){const main=$('#main');if(main)main.scrollTop=value}else scrollTo(0,value)}
+  function navigate(route,id,scenario){if(state.chat)closeChat();scrollByRoute.set(state.route,contentScroll());state.route=route;state.id=id||1;state.scenario=scenario||({garage:'many',login:'phone'}[route]||'normal');state.bookingStep=-1;state.bookingNotice='';location.hash=pathFor(route,id);render();requestAnimationFrame(()=>{restoreContentScroll(scrollByRoute.get(route)||0);$('#main-title')?.focus({preventScroll:true})})}
   function status(text,type=''){return `<span class="status ${type}">${esc(text)}</span>`}
   const archiveLabel=()=>'<span class="archive-label"><i aria-hidden="true"></i>Архив</span>';
   function button(text,action,klass=''){return `<button type="button" class="button ${klass}" data-action="${action}">${text}</button>`}
   function navButton(route,label,ico){let selected=state.route===route||(route==='garage'&&state.route==='car')||(route==='history'&&state.route==='order');return `<button type="button" data-route="${route}" ${selected?'aria-current="page"':''}>${icon(ico)}<span>${label}</span></button>`}
-  function shell(content,readable=false){const mobileNav=`<nav class="bottom-nav" aria-label="Основная навигация">${navButton('home','Главная','home')}${navButton('garage','Авто','car')}${navButton('bookings','Записи','calendar')}<button type="button" data-action="open-chat">${icon('chat')}<span>Написать</span></button>${navButton('more','Ещё','more')}</nav>`;return `<div class="app-shell"><aside class="sidebar" aria-label="Боковая навигация"><div class="brand"><span class="brand-mark">К</span>КОЛЕСОВИК</div><div class="nav-heading eyebrow">Кабинет клиента</div><nav class="side-nav" aria-label="Основная навигация">${navButton('home','Главная','home')}${navButton('garage','Мой гараж','car')}${navButton('bookings','Записи','calendar')}${navButton('history','История обслуживания','history')}${navButton('more','Ещё','more')}</nav><div class="sidebar-bottom">${button(`${icon('chat')} Написать сервису`,'open-chat','primary block')}<div class="sidebar-user"><strong>Мария Петрова</strong>Демонстрационный профиль</div></div></aside><div class="main"><div class="mobile-top"><div class="brand"><span class="brand-mark">К</span>КОЛЕСОВИК</div><button class="icon-button" data-action="open-chat" aria-label="Написать сервису">${icon('chat')}</button></div><main class="main-inner ${readable?'readable':''}" id="main">${content}</main></div></div>${state.route==='bookings'&&state.bookingStep>=0?'':mobileNav}`}
+  function shell(content,readable=false){const mobileNav=`<nav class="bottom-nav" aria-label="Основная навигация">${navButton('home','Главная','home')}${navButton('garage','Авто','car')}${navButton('bookings','Записи','calendar')}<button type="button" data-action="open-chat">${icon('chat')}<span>Написать</span></button>${navButton('more','Ещё','more')}</nav>`;return `<div class="app-shell"><aside class="sidebar" aria-label="Боковая навигация"><div class="brand"><span class="brand-mark">К</span>КОЛЕСОВИК</div><div class="nav-heading eyebrow">Кабинет клиента</div><nav class="side-nav" aria-label="Основная навигация">${navButton('home','Главная','home')}${navButton('garage','Мой гараж','car')}${navButton('bookings','Записи','calendar')}${navButton('history','История обслуживания','history')}${navButton('more','Ещё','more')}</nav><div class="sidebar-bottom">${button(`${icon('chat')} Написать сервису`,'open-chat','primary block')}<div class="sidebar-user"><strong>Мария Петрова</strong>Демонстрационный профиль</div></div></aside><div class="main"><div class="mobile-top"><div class="brand"><span class="brand-mark">К</span>КОЛЕСОВИК</div><button class="icon-button" data-action="open-chat" aria-label="Написать сервису">${icon('chat')}</button></div><main class="main-inner ${readable?'readable':''}" id="main">${content}</main></div>${state.route==='bookings'&&state.bookingStep>=0?'':mobileNav}</div>`}
   const head=(eyebrow,title,subtitle='',action='')=>`<header class="page-header"><div><div class="eyebrow">${eyebrow}</div><h1 id="main-title" tabindex="-1">${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div>${action}</header>`;
   const section=(title,content,action='')=>`<section class="content-section"><div class="section-title"><h2>${title}</h2>${action}</div>${content}</section>`;
   const stateBox=(title,detail,kind='')=>`<div class="inline-state ${kind}" role="${kind==='danger'?'alert':'status'}"><strong>${title}</strong><p>${detail}</p>${kind==='danger'?button('Повторить','reset-scenario','small'):''}</div>`;
@@ -178,7 +185,7 @@
   }
   function store(){return shell(`<button class="back-link" data-route="more">${icon('back')} Ещё</button>${head('Будущий этап','Магазин','Дизайн-концепция')}${stateBox('Следующий отдельный этап','Каталог и оформление заказа здесь не реализованы. После принятия Customer Core возможен Customer Store Prototype на общем catalog domain Next.','info')}`,true)}
   function login(){const stage=['phone','otp'].includes(state.scenario)?state.scenario:state.loginStep;const errorMap={'wrong-code':'Неверный код. Проверьте SMS.','expired':'Код истёк. Получите новый код.','attempt-limit':'Лимит попыток исчерпан. Подождите перед новым запросом.','sms-unavailable':'Вход по SMS временно недоступен.','rate-limit':'Слишком много запросов. Подождите и повторите.'};let err=errorMap[state.scenario];let form=stage==='otp'?`<form id="otp-form" class="form-stack"><label class="field">Код из SMS<input id="otp" class="otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" value="${esc(state.otp)}" aria-label="Шестизначный код из SMS"></label><button class="button primary block" type="submit">${state.scenario==='loading'?'Проверяем…':'Войти'}</button><button class="link-button" type="button" data-action="resend" ${state.resend>0?'disabled':''}>Отправить код снова${state.resend>0?` через ${state.resend} с`:''}</button><button class="link-button" type="button" data-action="login-back">Изменить номер</button></form>`:`<form id="phone-form" class="form-stack"><label class="field">Номер телефона<div class="phone-input"><span>+7</span><input id="phone" inputmode="tel" autocomplete="tel-national" placeholder="(999) 000-00-00" maxlength="15" value="${esc(state.phone)}" aria-label="Номер телефона без кода страны"></div><small>Отправим код подтверждения по SMS.</small></label><button class="button primary block" type="submit">${state.scenario==='loading'?'Отправляем…':'Получить код'}</button></form>`;return `<div class="login-shell"><div class="login-branding"><div class="brand" style="padding:0"><span class="brand-mark">К</span>КОЛЕСОВИК</div><div><div class="accent-rule"></div><h1>Всё о вашем автомобиле — в одном месте.</h1><p>Записи, история обслуживания, документы и связь с сервисом.</p></div><footer>ДИЗАЙН-ПРОТОТИП / вымышленные данные</footer></div><main class="login-content"><div class="login-panel"><div class="eyebrow">Личный кабинет</div><h2 id="main-title" tabindex="-1">${stage==='otp'?'Введите код':'Вход по телефону'}</h2><p>${stage==='otp'?'Код отправлен на номер +7 '+(state.phone||'(999) 123-45-67'):'Войдите, чтобы продолжить работу с автомобилями.'}</p>${err?`<div class="inline-state danger login-error" role="alert"><strong>${err}</strong></div>`:''}${state.scenario==='success'?stateBox('Вход подтверждён','В прототипе откройте кабинет кнопкой ниже.','success'):form}${state.scenario==='success'?button('Перейти в кабинет','login-finish','primary block'):''}<p class="login-foot">Все действия в этом экране локальны. SMS не отправляется.</p></div></main></div>`}
-  function render(){applyTheme();let route=state.route;app.innerHTML=({home,garage,car,history,order,bookings,more,recommendations:secondary,warranty:secondary,storage:secondary,payments:secondary,documents:secondary,store,login})[route]();renderOverlays();lastRoute=route}
+  function render(){applyTheme();let route=state.route;document.documentElement.classList.toggle('customer-shell-active',route!=='login');document.body.classList.toggle('customer-shell-active',route!=='login');app.innerHTML=({home,garage,car,history,order,bookings,more,recommendations:secondary,warranty:secondary,storage:secondary,payments:secondary,documents:secondary,store,login})[route]();renderOverlays();lastRoute=route}
   function openControls(){
     if(state.controls)return;
     focusReturn=document.activeElement;
@@ -215,7 +222,7 @@
   }
   function syncChatView(){
     if(!chatShell)return;
-    const closed=state.chatScenario==='closed';
+    const closed=state.chatSendState==='closed';
     chatShell.querySelector('#chat-presence-text').textContent=closed?'История разговора':'На связи с сервисом';
     chatShell.querySelector('#chat-form').hidden=closed;
     chatShell.querySelector('.chat-closed').hidden=!closed;
@@ -223,16 +230,16 @@
     const send=chatShell.querySelector('.chat-send');
     const mic=chatShell.querySelector('[data-action="chat-dictation"]');
     send.hidden=!hasDraft;
-    send.disabled=state.chatSendState==='sending'||state.chatSendState==='unknown';
+    send.disabled=state.chatSendState!=='idle';
     mic.hidden=hasDraft;
-    mic.disabled=state.chatSendState==='sending';
-    chatShell.querySelector('#chat-composer-note').textContent=state.chatSendState==='sending'?'Отправляется…':'Вложения и диктовка · FUTURE DESIGN PLACEHOLDER';
+    mic.disabled=state.chatSendState==='sending_demo';
+    chatShell.querySelector('#chat-composer-note').textContent=state.chatSendState==='sending_demo'?'Отправляется…':'Вложения и диктовка · FUTURE DESIGN PLACEHOLDER';
     const feedback=chatShell.querySelector('#chat-feedback');
-    feedback.hidden=!['error','unknown'].includes(state.chatSendState);
-    if(state.chatSendState==='error'){
+    feedback.hidden=!['error_demo','unknown_demo'].includes(state.chatSendState);
+    if(state.chatSendState==='error_demo'){
       feedback.className='chat-feedback danger';feedback.setAttribute('role','alert');
       feedback.innerHTML='<strong>Не удалось отправить</strong><span>Текст сохранён. Проверьте соединение и повторите попытку.</span>';
-    }else if(state.chatSendState==='unknown'){
+    }else if(state.chatSendState==='unknown_demo'){
       feedback.className='chat-feedback warning';feedback.setAttribute('role','status');
       feedback.innerHTML='<strong>Результат отправки неизвестен</strong><span>Проверьте историю перед повтором.</span><button data-action="chat-reconcile" type="button">Проверил историю</button>';
     }else{feedback.replaceChildren();feedback.removeAttribute('role')}
@@ -256,6 +263,47 @@
     history.insertAdjacentHTML('beforeend',chatMessageHtml(message));
     if(atBottom)history.scrollTop=history.scrollHeight;
   }
+  function bindChatListeners(){
+    chatListeners=new AbortController();
+    const signal=chatListeners.signal;
+    const listen=(node,type,handler)=>node.addEventListener(type,handler,{signal});
+    let composing=false;
+    listen(chatShell.querySelector('[data-action="close-chat"]'),'click',e=>{e.preventDefault();e.stopPropagation();closeChat()});
+    listen(chatShell.querySelector('[data-action="open-controls"]'),'click',e=>{e.preventDefault();e.stopPropagation();openControls()});
+    listen(chatInput,'compositionstart',()=>{composing=true});
+    listen(chatInput,'compositionend',()=>{composing=false;state.draft=chatInput.value;syncChatView()});
+    listen(chatInput,'input',()=>{state.draft=chatInput.value;syncChatView();chatDiagnostics.lastLifecycleEvent='input'});
+    listen(chatShell.querySelector('#chat-form'),'submit',e=>{
+      e.preventDefault();e.stopPropagation();
+      if(composing||state.chatSendState!=='idle')return;
+      const value=chatInput.value.trim();
+      if(!value)return;
+      const message={type:'customer',text:value,time:'сейчас'};
+      state.chatMessages.push(message);
+      appendChatMessage(message);
+      chatInput.value='';state.draft='';state.chatNotice='';
+      syncChatView();
+      chatDiagnostics.chatSendCount++;
+      chatDiagnostics.lastLifecycleEvent='send';
+      live.textContent='Сообщение добавлено в локальный диалог';
+    });
+    listen(chatShell.querySelector('[data-action="chat-attachment"]'),'click',e=>{e.stopPropagation();state.chatNotice='Вложения — FUTURE DESIGN PLACEHOLDER. Отправка файлов в прототипе недоступна.';syncChatView()});
+    listen(chatShell.querySelector('[data-action="chat-dictation"]'),'click',e=>{e.stopPropagation();state.chatNotice='Диктовка — FUTURE DESIGN PLACEHOLDER. Запись звука в прототипе недоступна.';syncChatView()});
+    listen(chatShell.querySelector('[data-action="chat-continue"]'),'click',e=>{e.stopPropagation();state.chatScenario='continue';state.chatSendState='idle';refreshChatHistory();syncChatView()});
+    listen(chatShell,'click',e=>{
+      const action=e.target.closest('[data-action]')?.dataset.action;
+      if(action==='chat-booking'){e.stopPropagation();closeChat();navigate('bookings')}
+      if(action==='chat-reconcile'){e.stopPropagation();state.chatSendState='idle';state.chatNotice='Проверьте историю перед повторной отправкой сообщения.';syncChatView()}
+    });
+    listen(chatShell,'keydown',e=>{
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeChat();return}
+      if(e.key!=='Tab')return;
+      const nodes=[...chatShell.querySelectorAll('button:not([disabled]),textarea:not([disabled]),[tabindex="0"]')].filter(n=>n.getClientRects().length);
+      if(!nodes.length)return;
+      if(e.shiftKey&&document.activeElement===nodes[0]){e.preventDefault();nodes.at(-1).focus()}
+      else if(!e.shiftKey&&document.activeElement===nodes.at(-1)){e.preventDefault();nodes[0].focus()}
+    });
+  }
   function renderControls(){let routes=Object.keys(routeNames).filter(x=>x!=='car'&&x!=='order');return `<div class="controls" data-overlay="controls"><section class="controls-panel" role="dialog" aria-modal="true" aria-labelledby="controls-title"><header><h2 id="controls-title">Prototype Controls</h2><button class="icon-button" data-action="close-controls" aria-label="Закрыть Prototype Controls">${icon('x')}</button></header><p>Локальные сценарии. Данные и действия вымышлены.</p><label class="field">Экран<select id="control-route">${routes.map(r=>`<option value="${r}" ${state.route===r?'selected':''}>${routeNames[r]}</option>`).join('')}<option value="car" ${state.route==='car'?'selected':''}>Карточка автомобиля</option><option value="order" ${state.route==='order'?'selected':''}>Полный акт</option><option value="ask" ${state.chat?'selected':''}>Написать сервису</option></select></label><label class="field">Состояние<select id="control-scenario">${(scenarioOptions[state.chat?'ask':state.route]||['normal']).map(s=>`<option value="${s}" ${(state.chat?state.chatScenario:state.scenario)===s?'selected':''}>${scenarioNames[s]||s}</option>`).join('')}</select></label><label class="field">Тема<select id="control-theme"><option value="light" ${state.theme==='light'?'selected':''}>Светлая</option><option value="dark" ${state.theme==='dark'?'selected':''}>Тёмная</option><option value="system" ${state.theme==='system'?'selected':''}>Системная</option></select></label><footer>${button('Скрыть controls','close-controls')}</footer></section></div>`}
   function renderDialog(){if(!state.overlay)return '';let type=state.overlay.type;let b=state.bookings.find(x=>x.id===state.overlay.id)||state.bookings[0];let title=type==='cancel'?'Отменить запись?':type==='pdf'?'Документ в прототипе':type==='logout'?'Выйти из кабинета?':'Подтверждение';let body=type==='cancel'?`<p> ${b?.date} · ${b?.time}<br><strong>${b?.service}</strong><br>${b?.branch}</p><p class="muted" style="margin-top:13px">После отмены запись исчезнет из списка будущих визитов.</p>`:type==='pdf'?`<p>В этом локальном дизайн-прототипе PDF не загружается.</p>`:type==='logout'?`<p>Вы вернётесь на демонстрационный экран входа.</p>`:'<p>Действие локально для прототипа.</p>';let act=type==='cancel'?button('Отменить запись','confirm-cancel','danger'):type==='logout'?button('Выйти','confirm-logout','primary'):'';return `<div class="overlay" data-overlay="dialog"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><header><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Закрыть окно">${icon('x')}</button></header><div class="dialog-body">${body}</div><footer class="dialog-footer">${button(type==='pdf'?'Понятно':'Оставить','close-dialog')}${act}</footer></section></div>`}
   function renderOverlays(){
@@ -264,6 +312,7 @@
         overlayRoot.innerHTML=renderChat();
         chatShell=overlayRoot.querySelector('.chat-overlay');
         chatInput=chatShell.querySelector('#chat-input');
+        bindChatListeners();
         const history=chatShell.querySelector('#chat-history');
         history.scrollTop=history.scrollHeight;
       }
@@ -274,46 +323,50 @@
   }
   function openChat(scenario){
     if(state.chat){
-      if(scenario){state.chatScenario=scenario;refreshChatHistory();syncChatView()}
+      if(scenario){state.chatScenario=scenario;state.chatSendState=scenario==='closed'?'closed':scenario==='sending'?'sending_demo':scenario==='error'?'error_demo':scenario==='unknown-outcome'?'unknown_demo':'idle';refreshChatHistory();syncChatView()}
       return;
     }
-    clearTimeout(chatSendTimer);
-    chatSendTimer=null;
-    chatSessionId++;
     chatFocusReturn=document.activeElement;
-    state.chat=true;state.chatScenario=scenario||'history';state.chatSendState='idle';state.chatNotice='';
+    state.chat=true;state.chatScenario=scenario||'history';state.chatSendState=scenario==='closed'?'closed':scenario==='sending'?'sending_demo':scenario==='error'?'error_demo':scenario==='unknown-outcome'?'unknown_demo':'idle';state.chatNotice='';state.draft='';state.chatMessages=[];
     document.documentElement.classList.add('chat-open');
     document.body.classList.add('chat-open');
-    app.inert=true;
-    $('#prototype-bar').inert=true;
+    const bar=$('#prototype-bar');
+    chatBackgroundAria=[app.getAttribute('aria-hidden'),bar.getAttribute('aria-hidden')];
+    app.setAttribute('aria-hidden','true');bar.setAttribute('aria-hidden','true');
     renderOverlays();
+    chatDiagnostics.chatOpenCount++;chatDiagnostics.lastLifecycleEvent='open';
     chatShell.querySelector('[data-action="close-chat"]').focus({preventScroll:true});
+  }
+  function destroyChatSession(){
+    chatListeners?.abort();chatListeners=null;
+    chatShell?.remove();chatShell=null;chatInput=null;
+    state.controls=false;controlsRoot.replaceChildren();
+    document.documentElement.classList.remove('chat-open');
+    document.body.classList.remove('chat-open');
+    const bar=$('#prototype-bar');
+    for(const [node,value] of [[app,chatBackgroundAria?.[0]],[bar,chatBackgroundAria?.[1]]]){
+      if(value===null||value===undefined)node.removeAttribute('aria-hidden');else node.setAttribute('aria-hidden',value);
+    }
+    chatBackgroundAria=null;
+    state.chat=false;state.chatScenario='history';state.chatSendState='idle';state.chatNotice='';state.draft='';state.chatMessages=[];
+    chatDiagnostics.chatDestroyCount++;chatDiagnostics.lastLifecycleEvent='destroy';
   }
   function closeChat(){
     if(!state.chat)return;
     const returnTo=chatFocusReturn;
-    chatSessionId++;
-    clearTimeout(chatSendTimer);
-    chatSendTimer=null;
-    state.chat=false;state.chatSendState='idle';
-    state.controls=false;
-    controlsRoot.replaceChildren();
-    chatShell?.remove();chatShell=null;chatInput=null;
-    document.documentElement.classList.remove('chat-open');
-    document.body.classList.remove('chat-open');
-    app.inert=false;
-    $('#prototype-bar').inert=false;
+    const wasEditing=document.activeElement===chatInput;
+    destroyChatSession();
+    chatDiagnostics.chatCloseCount++;chatDiagnostics.lastLifecycleEvent='close';
     const fallback=[...document.querySelectorAll('[data-action="open-chat"]')].find(x=>x.getClientRects().length);
-    (returnTo?.isConnected?returnTo:fallback)?.focus({preventScroll:true});
+    if(!wasEditing)(returnTo?.isConnected?returnTo:fallback)?.focus({preventScroll:true});
     chatFocusReturn=null;focusReturn=null;
   }
   function openDialog(type,id){focusReturn=document.activeElement;state.overlay={type,id};renderOverlays();$('.dialog .icon-button')?.focus();document.body.style.overflow='hidden'}
   function closeDialog(){state.overlay=null;document.body.style.overflow='';renderOverlays();focusReturn?.focus()}
   function setScenario(s){
     if(state.chat){
-      clearTimeout(chatSendTimer);chatSendTimer=null;
       state.chatScenario=s;
-      state.chatSendState=s==='sending'?'sending':s==='error'?'error':s==='unknown-outcome'?'unknown':'idle';
+      state.chatSendState=s==='closed'?'closed':s==='sending'?'sending_demo':s==='error'?'error_demo':s==='unknown-outcome'?'unknown_demo':'idle';
       state.chatNotice='';
       refreshChatHistory();syncChatView();
     }else{
@@ -324,7 +377,8 @@
       if(state.route==='bookings')state.bookingNotice=s==='success'?'Запись подтверждена':'';
       render();
     }
-    announce(`Сценарий: ${scenarioNames[s]||s}`);
+    if(state.chat)live.textContent=`Сценарий: ${scenarioNames[s]||s}`;
+    else announce(`Сценарий: ${scenarioNames[s]||s}`);
   }
   function startNewBooking(){
     if(state.route!=='bookings')navigate('bookings');
@@ -358,6 +412,7 @@
     state.bookingStep=-2;state.scenario='success';render();announce(move?'Запись перенесена':'Запись подтверждена');
   }
   document.addEventListener('click',e=>{
+    if(e.target.closest('.chat-overlay'))return;
     const t=e.target.closest('[data-route],[data-action],[data-theme-choice],[data-service],[data-time],[data-booking-car],[data-booking-date]');if(!t)return;
     if(t.dataset.route){if(t.dataset.origin)state.origin=t.dataset.origin;if(['recommendations','warranty','storage','documents'].includes(t.dataset.route))state.contextCarId=state.route==='car'?state.id:null;if(t.dataset.route==='more')state.contextCarId=null;navigate(t.dataset.route,Number(t.dataset.id)||undefined);return}
     if(t.dataset.themeChoice){setTheme(t.dataset.themeChoice);return}
@@ -366,7 +421,7 @@
     if(t.dataset.time){state.bookingTime=t.dataset.time;render();return}
     if(t.dataset.bookingCar){state.bookingCar=Number(t.dataset.bookingCar);render();return}
     switch(t.dataset.action){
-      case 'open-chat':openChat();break;case 'close-chat':closeChat();break;
+      case 'open-chat':openChat();break;
       case 'open-controls':openControls();break;case 'close-controls':closeControls();break;
       case 'reset-scenario':setScenario(state.route==='garage'?'many':'normal');break;
       case 'new-booking':startNewBooking();break;case 'go-bookings':navigate('bookings');break;
@@ -385,11 +440,6 @@
       case 'resend':state.resend=38;state.scenario='otp';render();announce('Демонстрационный код отправлен локально');break;
       case 'secondary-detail':if(state.route==='recommendations'){state.origin='history';navigate('order',2418)}else{state.secondaryId=2;render()}break;
       case 'secondary-back':state.secondaryId=1;render();break;case 'secondary-order':state.origin='history';navigate('order',2418);break;
-      case 'chat-booking':closeChat();navigate('bookings');break;
-      case 'chat-continue':state.chatScenario='continue';state.chatSendState='idle';refreshChatHistory();syncChatView();chatShell?.querySelector('[data-action="close-chat"]')?.focus({preventScroll:true});break;
-      case 'chat-attachment':state.chatNotice='Вложения — FUTURE DESIGN PLACEHOLDER. Отправка файлов в прототипе недоступна.';syncChatView();break;
-      case 'chat-dictation':state.chatNotice='Диктовка — FUTURE DESIGN PLACEHOLDER. Запись звука в прототипе недоступна.';syncChatView();break;
-      case 'chat-reconcile':state.chatSendState='idle';state.chatNotice='Проверьте историю перед повторной отправкой сообщения.';syncChatView();break;
     }
   }
   );
@@ -410,7 +460,7 @@
     if(e.target.id==='booking-date')state.bookingDate=e.target.value;
   });
   document.addEventListener('input',e=>{
-    if(e.target===chatInput){state.draft=chatInput.value;syncChatView()}
+    if(e.target.closest('.chat-overlay'))return;
     if(e.target.id==='phone'){
       let d=e.target.value.replace(/\D/g,'').replace(/^7/,'').slice(0,10),v='';
       if(d.length)v='('+d.slice(0,3)+(d.length>=3?') ':'');
@@ -422,25 +472,7 @@
     if(e.target.id==='otp'){e.target.value=e.target.value.replace(/\D/g,'').slice(0,6);state.otp=e.target.value}
   });
   document.addEventListener('submit',e=>{
-    if(e.target.id==='chat-form'){
-      e.preventDefault();
-      const value=chatInput?.value.trim();
-      if(!value||state.chatSendState==='sending'||state.chatSendState==='unknown')return;
-      state.chatSendState='sending';state.chatNotice='';syncChatView();
-      const session=chatSessionId;
-      clearTimeout(chatSendTimer);
-      chatSendTimer=setTimeout(()=>{
-        chatSendTimer=null;
-        if(!state.chat||session!==chatSessionId)return;
-        const message={type:'customer',text:value,time:'сейчас'};
-        state.chatMessages.push(message);
-        appendChatMessage(message);
-        if(chatInput.value.trim()===value){chatInput.value='';state.draft=''}
-        else state.draft=chatInput.value;
-        state.chatSendState='idle';syncChatView();
-        announce('Сообщение добавлено в локальный диалог');
-      },650);
-    }
+    if(e.target.closest('.chat-overlay'))return;
     if(e.target.id==='phone-form'){
       e.preventDefault();
       if(state.phone.replace(/\D/g,'').length!==10){announce('Укажите 10 цифр номера');$('#phone')?.focus();return}
@@ -452,8 +484,8 @@
       state.scenario='success';render();
     }
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(state.controls){closeControls();return}if(state.chat){closeChat();return}if(state.overlay){closeDialog();return}}if(e.key!=='Tab')return;let container=state.controls?$('.controls-panel'):state.chat?$('.drawer'):state.overlay?$('.dialog'):null;if(!container)return;let nodes=[...container.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!nodes.length)return;let first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});
-  window.addEventListener('hashchange',()=>{let [route,id]=parsePath();if(route!==state.route||id!==state.id){state.route=route;state.id=id;state.scenario=route==='garage'?'many':route==='login'?'phone':'normal';render();scrollTo(0,0)}});
+  document.addEventListener('keydown',e=>{if(e.target.closest('.chat-overlay'))return;if(e.key==='Escape'){if(state.controls){closeControls();return}if(state.overlay){closeDialog();return}}if(e.key!=='Tab')return;let container=state.controls?$('.controls-panel'):state.overlay?$('.dialog'):null;if(!container)return;let nodes=[...container.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!nodes.length)return;let first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});
+  window.addEventListener('hashchange',()=>{let [route,id]=parsePath();if(route!==state.route||id!==state.id){state.route=route;state.id=id;state.scenario=route==='garage'?'many':route==='login'?'phone':'normal';render();restoreContentScroll(0)}});
   const [initialRoute,initialId]=parsePath();state.route=initialRoute;state.id=initialId;state.scenario=initialRoute==='garage'?'many':initialRoute==='login'?'phone':'normal';render();
   setInterval(()=>{if(state.route==='login'&&state.loginStep==='otp'&&state.resend>0){state.resend--;let b=$('[data-action="resend"]');if(b){b.textContent=`Отправить код снова${state.resend>0?` через ${state.resend} с`:''}`;b.disabled=state.resend>0}}},1000);
 })();
