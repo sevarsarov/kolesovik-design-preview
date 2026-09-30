@@ -10,22 +10,23 @@
 </head>
 <body>
   <a class="skip-link" href="#content">К содержимому</a>
-  <div class="prototype-tools"><span>SHINOMONTAJ v1 · LOCAL DESIGN ONLY</span><button id="controls-open" type="button" aria-label="Prototype Controls" aria-controls="prototype-controls" aria-expanded="false">⚙</button></div>
+  <div class="prototype-tools"><span>SHINOMONTAJ v1.1 · LOCAL DESIGN ONLY</span><button id="controls-open" type="button" aria-label="Prototype Controls" aria-controls="prototype-controls" aria-expanded="false">⚙</button></div>
   <div id="prototype-controls" class="controls-backdrop" hidden>
     <section class="controls-panel" role="dialog" aria-modal="true" aria-labelledby="controls-title" tabindex="-1">
       <div class="controls-head"><h2 id="controls-title">Prototype Controls</h2><button id="controls-close" type="button" aria-label="Закрыть controls">×</button></div>
-      <p>Служебные состояния. Все примеры работ, товары, суммы и будущие филиалы вымышлены. API и внешних запросов нет.</p>
+      <p>Служебные состояния. Прайс шиномонтажа сверен с действующим сайтом. Примеры работ, шины и будущие филиалы — DEMO. API и внешних запросов нет.</p>
       <label for="state-select">Страница / состояние</label>
       <select id="state-select">
-        <option value="MASTER_CURRENT">MASTER_CURRENT · федеральная</option>
-        <option value="MASTER_NETWORK">MASTER_NETWORK · DEMO FUTURE NETWORK</option>
-        <option value="CITY_CURRENT">CITY_CURRENT · Подольск</option>
-        <option value="CITY_MULTI_BRANCH">CITY_MULTI_BRANCH · DEMO</option>
-        <option value="CITY_INSUFFICIENT_DATA">CITY_INSUFFICIENT_DATA · fallback</option>
+        <option value="MASTER_CURRENT">Основная страница · сейчас</option>
+        <option value="MASTER_NETWORK">Основная · будущая сеть (DEMO)</option>
+        <option value="CITY_CURRENT">Подольск · сейчас</option>
+        <option value="CITY_MULTI_BRANCH">Один город · несколько точек (DEMO)</option>
+        <option value="CITY_INSUFFICIENT_DATA">Локальная страница · мало данных</option>
       </select>
       <label for="theme-select">Тема как в Pilot Next</label>
       <select id="theme-select"><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="system">Системная</option></select>
       <p class="technical">Visual eligibility: <strong id="technical-status">GENERATE_INDEX</strong>. Это проверка архитектуры, а не реальное SEO-решение.</p>
+      <p class="technical">Ключ состояния: <code id="technical-key">MASTER_CURRENT</code></p>
       <button id="controls-hide" type="button" class="button secondary">Закрыть панель</button>
     </section>
   </div>
