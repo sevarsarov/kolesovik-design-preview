@@ -137,7 +137,7 @@
     const steps=move?['Дата','Время','Подтверждение']:['Дата','Услуга','Время','Автомобиль','Подтверждение'];
     const last=steps.length-1,target=state.bookings.find(b=>b.id===state.bookingTargetId);
     let body='',ready=false;
-    if(step===0){body=`<p class="booking-selection">Выберите день. Время указано по часовому поясу филиала.</p>${bookingCalendar()}`;ready=Boolean(state.bookingDate)}
+    if(step===0){body=bookingCalendar();ready=Boolean(state.bookingDate)}
     if(!move&&step===1){body=`<p class="booking-selection">${bookingDateLabel(state.bookingDate)}</p><div class="booking-choices">${['Плановое ТО','Диагностика ходовой','Шиномонтаж'].map(s=>`<button class="booking-choice" data-service="${s}" aria-pressed="${state.bookingService===s}"><span>${icon('car')}</span><strong>${s}</strong><span aria-hidden="true">${state.bookingService===s?'✓':'○'}</span></button>`).join('')}</div>`;ready=Boolean(state.bookingService)}
     const timeStep=move?1:2;
     if(step===timeStep){
@@ -149,6 +149,21 @@
     const fixed=move?`<div class="booking-fixed" aria-label="Неизменяемый контекст записи"><span>Переносится только дата и время</span><strong>${target?.service||'Услуга'} · ${cars.find(c=>c.id===target?.carId)?.name||'Автомобиль'}</strong><small>${target?.branch||'КОЛЕСОВИК · Центр'}</small></div>`:'';
     return `<section class="booking-wizard" aria-label="${move?'Перенос записи':'Новая запись'}"><div class="booking-progress"><span>Шаг ${step+1} из ${steps.length} · ${steps[step]}</span><div role="progressbar" aria-label="Шаги записи" aria-valuemin="1" aria-valuemax="${steps.length}" aria-valuenow="${step+1}"><i style="width:${((step+1)/steps.length)*100}%"></i></div></div><div class="booking-wizard-content">${fixed}${step===0?'':`<h2>${step===last?'Проверьте запись':move&&step===1?'Выберите время':steps[step]}</h2>`}${body}</div><footer class="booking-wizard-footer">${button('← Назад','booking-back','ghost')}${button(step===last?(move?'Подтвердить перенос':'Записаться'):'Продолжить','booking-next','primary').replace('data-action=',`${ready?'':'disabled '}data-action=`)}</footer></section>`
   }
+  function updateBookingWizard(selected){
+    const main=$('#main'),wizard=$('.booking-wizard');
+    if(!main||!wizard)return;
+    const scrollTop=main.scrollTop;
+    const hadFocus=document.activeElement===selected;
+    const key=['bookingDate','service','time','bookingCar'].find(name=>selected.dataset[name]!==undefined);
+    const template=document.createElement('template');
+    template.innerHTML=bookingWizard();
+    wizard.replaceWith(template.content.firstElementChild);
+    main.scrollTop=scrollTop;
+    if(hadFocus){
+      const replacement=[...main.querySelectorAll('.booking-wizard button')].find(button=>key?button.dataset[key]===selected.dataset[key]:button.dataset.action===selected.dataset.action);
+      if(replacement&&!replacement.disabled)replacement.focus({preventScroll:true});
+    }
+  }
   function bookingResult(){
     const result=state.bookingResult;
     return `<div class="booking-result"><span class="booking-result-mark" aria-hidden="true">✓</span><h2>${result?.kind==='reschedule'?'Запись перенесена':'Запись подтверждена'}</h2>${bookingSummary(result?.booking)}${button('Открыть мои записи','booking-view-list')}${result?.kind==='create'?'<p class="notice">Это локальный результат прототипа. Запись в сервисе не создаётся.</p>':''}</div>`
@@ -159,7 +174,7 @@
     const statusMessage=state.scenario==='conflict'?stateBox('Запись изменилась','Обновите сведения и выберите время заново. Старая версия не отправляется повторно.','warning'):state.scenario==='unknown-outcome'?stateBox('Результат операции неизвестен','Обновите список записей перед повторным действием.','warning'):'';
     const list=`<div class="booking-list-flow">${notice}${statusMessage}<div class="booking-start">${button(`${icon('plus')} Новая запись`,'new-booking','primary')}</div><div class="section-title"><h2>Ближайшие записи</h2></div>${state.scenario==='empty'||state.bookings.length===0?stateBox('Будущих записей нет','Новая запись сразу появится здесь после подтверждения.'):state.bookings.map(bookingCard).join('')}</div>`;
     const body=state.bookingStep===-2?bookingResult():state.bookingStep>=0?bookingWizard():list;
-    return shell(`${head('Планы обслуживания','Записи','Будущие визиты и действия с ними.')}${common||body}`,true)
+    return shell(`${head('Планы обслуживания','Записи')}${common||body}`,true)
   }
   function more(){const items=[['Рекомендации','Дальнейшие работы','spark','recommendations'],['Гарантия','Обращения и результат','shield','warranty'],['Шины на хранении','Комплекты и сроки','tire','storage'],['Оплаты и возвраты','История операций','card','payments'],['Документы','Доступные PDF','file','documents'],['История обслуживания','Акты по всем авто','history','history']];let common=commonState();return shell(`${head('Разделы кабинета','Ещё','Документы, связанные сведения и настройки.')}${common||`<div class="more-grid">${items.map(([t,s,ico,route])=>`<button class="more-link" data-route="${route}">${icon(ico)}<span><strong>${t}</strong><small>${s}</small></span>${icon('arrow')}</button>`).join('')}<button class="more-link" data-route="store">${icon('spark')}<span><strong>Магазин</strong><small>Дизайн-концепция · следующий этап</small></span>${icon('arrow')}</button></div>${section('Оформление',`<div class="panel"><p class="muted" style="font-size:.84rem;margin-bottom:14px">Тема сохраняется только для этого прототипа.</p><div class="theme-group" role="group" aria-label="Тема оформления">${['light','dark','system'].map(x=>`<button data-theme-choice="${x}" aria-pressed="${state.theme===x}">${x==='light'?'Светлая':x==='dark'?'Тёмная':'Системная'}</button>`).join('')}</div></div>`)}<div style="margin-top:22px">${button(`${icon('logout')} Выйти`,'logout','ghost')}</div>`}`,true)}
   function secondary(){
@@ -416,10 +431,10 @@
     const t=e.target.closest('[data-route],[data-action],[data-theme-choice],[data-service],[data-time],[data-booking-car],[data-booking-date]');if(!t)return;
     if(t.dataset.route){if(t.dataset.origin)state.origin=t.dataset.origin;if(['recommendations','warranty','storage','documents'].includes(t.dataset.route))state.contextCarId=state.route==='car'?state.id:null;if(t.dataset.route==='more')state.contextCarId=null;navigate(t.dataset.route,Number(t.dataset.id)||undefined);return}
     if(t.dataset.themeChoice){setTheme(t.dataset.themeChoice);return}
-    if(t.dataset.bookingDate){state.bookingDate=t.dataset.bookingDate;state.bookingTime='';render();return}
-    if(t.dataset.service){state.bookingService=t.dataset.service;render();return}
-    if(t.dataset.time){state.bookingTime=t.dataset.time;render();return}
-    if(t.dataset.bookingCar){state.bookingCar=Number(t.dataset.bookingCar);render();return}
+    if(t.dataset.bookingDate){state.bookingDate=t.dataset.bookingDate;state.bookingTime='';updateBookingWizard(t);return}
+    if(t.dataset.service){state.bookingService=t.dataset.service;updateBookingWizard(t);return}
+    if(t.dataset.time){state.bookingTime=t.dataset.time;updateBookingWizard(t);return}
+    if(t.dataset.bookingCar){state.bookingCar=Number(t.dataset.bookingCar);updateBookingWizard(t);return}
     switch(t.dataset.action){
       case 'open-chat':openChat();break;
       case 'open-controls':openControls();break;case 'close-controls':closeControls();break;
@@ -427,8 +442,8 @@
       case 'new-booking':startNewBooking();break;case 'go-bookings':navigate('bookings');break;
       case 'booking-next':bookingNext();break;
       case 'booking-back':if(state.bookingStep>0)state.bookingStep--;else state.bookingStep=-1;render();break;
-      case 'booking-month-prev':state.bookingMonth=Math.max(9,state.bookingMonth-1);state.bookingDate='';state.bookingTime='';render();break;
-      case 'booking-month-next':state.bookingMonth=Math.min(10,state.bookingMonth+1);state.bookingDate='';state.bookingTime='';render();break;
+      case 'booking-month-prev':state.bookingMonth=Math.max(9,state.bookingMonth-1);state.bookingDate='';state.bookingTime='';updateBookingWizard(t);break;
+      case 'booking-month-next':state.bookingMonth=Math.min(10,state.bookingMonth+1);state.bookingDate='';state.bookingTime='';updateBookingWizard(t);break;
       case 'booking-other-date':state.bookingStep=0;state.bookingDate='';state.bookingTime='';state.scenario='normal';render();break;
       case 'booking-view-list':state.bookingStep=-1;state.bookingResult=null;state.bookingNotice='';state.scenario='normal';render();break;
       case 'reschedule':startReschedule(Number(t.dataset.booking));break;
