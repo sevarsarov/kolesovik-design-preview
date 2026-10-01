@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Магазин — КОЛЕСОВИК · визуальный прототип</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>try{const t=localStorage.getItem('shop-prototype-theme')||'light';document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t}catch{}</script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">К содержимому</a>
+  <div class="prototype-tools"><span>SHOP · DESIGN PROTOTYPE</span><button id="controls-open" type="button" aria-label="Prototype Controls" aria-controls="prototype-controls" aria-expanded="false">⚙</button></div>
+  <div id="prototype-controls" class="controls-backdrop" hidden>
+    <section class="controls-panel" role="dialog" aria-modal="true" aria-labelledby="controls-title" tabindex="-1">
+      <div class="controls-head"><h2 id="controls-title">Prototype Controls</h2><button id="controls-close" type="button" aria-label="Закрыть controls">×</button></div>
+      <p>Все товары, цены, остатки, сроки и совместимость в этом макете — DEMO. Ничего не отправляется.</p>
+      <p class="technical">CURRENT REAL DATA DOMAIN: tyres<br>DEMO PRODUCT DOMAINS: wheels, oils, filters, brakes, batteries.</p>
+      <label for="state-select">Состояние макета</label>
+      <select id="state-select">
+        <option value="SHOP_HOME">Магазин · без автомобиля</option>
+        <option value="VEHICLE_SELECTED">Автомобиль выбран</option>
+        <option value="CATEGORY">Категория · шины</option>
+        <option value="SEARCH_RESULTS">Результаты поиска</option>
+        <option value="CART_WITH_ITEMS">Корзина · несколько товаров</option>
+        <option value="CART_EMPTY">Корзина · пусто</option>
+      </select>
+      <label for="theme-select">Тема</label>
+      <select id="theme-select"><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="system">Системная</option></select>
+      <p class="technical">Ключ: <code id="technical-key">SHOP_HOME</code>. Выбор состояния через Controls подготавливает демонстрационный сценарий и может заменить локальную корзину.</p>
+      <button id="controls-hide" type="button" class="button secondary">Закрыть панель</button>
+    </section>
+  </div>
+  <div id="app"></div>
+  <div id="overlay-root"></div>
+  <div id="shop-toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
